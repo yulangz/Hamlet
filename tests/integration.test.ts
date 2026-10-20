@@ -149,10 +149,10 @@ test("真实子进程适配：stdin 安全传参、session/resume、事件和原
     assert.equal(s.store.all("runs")[0].final_output, "STARTED");
     assert.equal(s.store.all("runs")[0].usage.input_tokens, 12);
     const run = s.store.all("runs")[0];
-    assert.match(readFileSync(run.events_path, "utf8"), /tool_result/);
+    assert.match(readFileSync(run.events_path, "utf8"), /command/);
     assert.match(
       readFileSync(run.events_path.replace(".jsonl", ".raw.jsonl"), "utf8"),
-      /mcp_tool_call/,
+      /command_execution/,
     );
     assert.equal(existsSync("/tmp/should-never-exist-detached"), false);
     const invoke = JSON.parse(
@@ -160,9 +160,7 @@ test("真实子进程适配：stdin 安全传参、session/resume、事件和原
     );
     assert.match(invoke.prompt, /换行/);
     assert.equal(invoke.token, true);
-    assert.ok(
-      invoke.args.some((x: string) => x.includes("mcp_servers.hamlet.env=")),
-    );
+    assert.ok(!invoke.args.some((x: string) => x.includes("mcp_servers")));
     const resume = s.ring(OWNER, { target: i.id, prompt: "followup" });
     await until(() => s.store.get("messages", resume.id)?.status === "done");
     assert.equal(s.store.all("runs")[1].kind, "resume");
@@ -369,11 +367,6 @@ test("harness 参数与标准事件契约，包括第二个 Claude harness", () 
     model: "model",
     options: { model_reasoning_effort: "low" },
     env: {},
-    innerTools: {
-      command: "/node",
-      args: ["/inner"],
-      env: { HAMLET_TOKEN: "a" },
-    },
   };
   const fork = codexArgs(o),
     resume = codexArgs({ ...o, sessionId: "session" });

@@ -62,7 +62,7 @@ test("fork 并行、来源头、自动提交、指定实例 resume、快照不�
   }
 });
 
-test("常驻创建即登记、FIFO、失败后继续、归档后换新与序号不复用", async () => {
+test("常驻首次触发创建、FIFO、失败后继续、归档后换新与序号不复用", async () => {
   const f = await fixture();
   try {
     const l = await f.agent({ run_mode: "resident" });
@@ -127,7 +127,10 @@ test("缺模板变量不创建实例；显式空 prompt 与 system prompt 分别
     f.s.ring(OWNER, { target: l.id, prompt: "", system_prompt: "" });
     f.s.tick();
     await until(() => f.h.calls.length === 1);
-    assert.match(f.h.calls[0].options.prompt, /ring 调用方 \(owner\)\]\n$/);
+    assert.match(
+      f.h.calls[0].options.prompt,
+      /ring 调用方 \(owner\)\]\n\n\n\[Hamlet runtime\]/,
+    );
     assert.throws(() => render("{{toString}}", {}), /缺少/);
   } finally {
     await f.close();

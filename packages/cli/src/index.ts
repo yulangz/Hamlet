@@ -6,6 +6,7 @@ import {
   readFileSync,
   existsSync,
   unlinkSync,
+  cpSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -36,8 +37,35 @@ async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (!cmd || cmd === "help" || cmd === "--help") {
     print(
-      `Hamlet · 坊\nHamlet — a quiet village of detached agents, woken by a doorbell.\n\nhamlet start | serve | stop | status | ui [--open]\nhamlet call <tool> '<JSON>'\nhamlet ring <ID|角色名> [--group ID] [--prompt TEXT] [--system-prompt TEXT] [--var key=value] [--dedup-key KEY] [--dedup-window 24h]\nhamlet install-service | uninstall-service\ndoorbell ring <目标> ...`,
+      `Hamlet · 坊\nHamlet — a quiet village of detached agents, woken by a doorbell.\n\nhamlet start | serve | stop | status | ui [--open]\nhamlet call <tool> '<JSON>' | --file <JSON file> | --stdin\nhamlet skill path | install --path <absolute skill directory>\nhamlet ring <ID|角色名> [--group ID] [--prompt TEXT] [--system-prompt TEXT] [--var key=value] [--dedup-key KEY] [--dedup-window 24h]\nhamlet install-service | uninstall-service\ndoorbell ring <目标> ...`,
     );
+    return;
+  }
+  if (cmd === "skill") {
+    const source = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../skills/hamlet",
+    );
+    if (args[0] === "path") {
+      print(source);
+      return;
+    }
+    if (
+      args[0] !== "install" ||
+      args[1] !== "--path" ||
+      !args[2] ||
+      !args[2].startsWith("/")
+    )
+      throw Error("用法: hamlet skill path | install --path <绝对目标目录>");
+    const destination = resolve(args[2]);
+    if (existsSync(destination))
+      throw Error("目标已存在，未覆盖；请检查后自行更新 Skill");
+    cpSync(source, destination, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    });
+    print({ path: destination, installed: true });
     return;
   }
   if (cmd === "serve") {
@@ -79,8 +107,20 @@ async function main() {
     return;
   }
   if (cmd === "call") {
+    if (!args[0]) throw Error("call 需要工具名");
+    let input = args[1] || "{}";
+    if (args[1] === "--file") {
+      if (!args[2]) throw Error("--file 需要 JSON 文件路径");
+      input = readFileSync(args[2], "utf8");
+    } else if (args[1] === "--stdin") {
+      input = "";
+      for await (const chunk of process.stdin) input += chunk;
+    }
+    const params = JSON.parse(input);
+    if (!params || typeof params !== "object" || Array.isArray(params))
+      throw Error("工具参数必须是 JSON 对象");
     const c = await connect();
-    print(await c.call(args[0], JSON.parse(args[1] || "{}")));
+    print(await c.call(args[0], params));
     return;
   }
   if (cmd === "ui") {

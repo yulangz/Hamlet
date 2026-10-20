@@ -4,7 +4,7 @@ import type {
   ResumeOptions,
   AgentEvent,
 } from "../../core/src/types.js";
-import { runtimeEnv } from "../../core/src/runtime.js";
+import { runtimeEnv, childEnvironment } from "../../core/src/runtime.js";
 import { runProcess, stopProcess } from "./process.js";
 import { spawnSync } from "node:child_process";
 function toml(v: unknown): string {
@@ -18,7 +18,7 @@ function toml(v: unknown): string {
 }
 export function codexArgs(
   o: StartOptions | ResumeOptions,
-  detachedTransport: "preserve" | "fallback" = "preserve",
+  legacy: Record<string, "preserve" | "fallback"> = {},
 ): string[] {
   const resume = "sessionId" in o;
   const args = [
@@ -29,19 +29,15 @@ export function codexArgs(
     "--skip-git-repo-check",
   ];
   if (o.model) args.push("-m", o.model);
-  const settings: Record<string, unknown> = {
-    ...o.options,
-    "mcp_servers.detached.enabled": false,
-    "mcp_servers.hamlet.enabled": true,
-    "mcp_servers.hamlet.command": o.innerTools.command,
-    "mcp_servers.hamlet.args": o.innerTools.args,
-    "mcp_servers.hamlet.env": o.innerTools.env,
-  };
-  if (detachedTransport === "fallback") {
-    // A disabled entry still needs a transport in Codex 0.163. Do not give
-    // this placeholder the inner tool's arguments or identity environment.
-    settings["mcp_servers.detached.command"] = process.execPath;
-    settings["mcp_servers.detached.args"] = [];
+  const settings: Record<string, unknown> = { ...o.options };
+  // Disable inherited Hamlet MCPs during transition. No tool process or
+  // credential is injected; unrelated user MCPs remain the user's choice.
+  for (const [name, transport] of Object.entries(legacy)) {
+    settings[`mcp_servers.${name}.enabled`] = false;
+    if (transport === "fallback") {
+      settings[`mcp_servers.${name}.command`] = process.execPath;
+      settings[`mcp_servers.${name}.args`] = [];
+    }
   }
   if (!resume)
     settings.developer_instructions = (o as StartOptions).systemPrompt;
@@ -56,28 +52,45 @@ export function codexLaunchArgs(
   command: string,
   o: StartOptions | ResumeOptions,
 ): string[] {
-  const args = codexArgs(o, "preserve");
-  const configArgs = args.flatMap((arg, i) =>
-    arg === "-c" ? [arg, args[i + 1]] : [],
-  );
-  // Let Codex resolve user/project config and CLI overrides itself. Inserting
-  // a command unconditionally would break an inherited HTTP transport: Codex
-  // deep-merges overrides and rejects command + url even when disabled.
-  // `mcp list` parses configuration without starting MCPs or requesting a model.
-  const probe = spawnSync(command, ["mcp", "list", "--json", ...configArgs], {
-    cwd: o.cwd,
-    env: { ...process.env, ...o.env },
-    encoding: "utf8",
-    timeout: 5000,
-    maxBuffer: 1024 * 1024,
-  });
-  if (
-    probe.status !== 0 &&
-    /invalid transport\s+in `mcp_servers\.detached`/.test(probe.stderr || "")
-  )
-    return codexArgs(o, "fallback");
-  // Other failures retain the normal exec path and its original diagnostics.
-  return args;
+  const legacy: Record<string, "preserve" | "fallback"> = {};
+  // Read effective user/project/option configuration without starting servers
+  // or a model. Absent entries stay absent. Codex still validates disabled
+  // transports, so only malformed legacy entries get a credential-free stub.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const args = codexArgs(o, legacy);
+    const configArgs = args.flatMap((arg, i) =>
+      arg === "-c" ? [arg, args[i + 1]] : [],
+    );
+    const probe = spawnSync(command, ["mcp", "list", "--json", ...configArgs], {
+      cwd: o.cwd,
+      env: { ...childEnvironment(), ...o.env },
+      encoding: "utf8",
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    });
+    if (probe.status === 0) {
+      try {
+        for (const server of JSON.parse(probe.stdout))
+          if (["hamlet", "detached"].includes(server.name))
+            legacy[server.name] ??= "preserve";
+      } catch {
+        throw new Error(
+          "无法解析 Codex 有效配置；未启动子 Agent，请检查 codex mcp list --json",
+        );
+      }
+      return codexArgs(o, legacy);
+    }
+    const malformed =
+      /invalid transport\s+in `mcp_servers\.(hamlet|detached)`/.exec(
+        probe.stderr || "",
+      );
+    if (!malformed || legacy[malformed[1]] === "fallback")
+      throw new Error(
+        "无法检查 Codex 有效配置；未启动子 Agent，请检查 codex mcp list --json",
+      );
+    legacy[malformed[1]] = "fallback";
+  }
+  return codexArgs(o, legacy);
 }
 export function normalize(raw: any): AgentEvent[] {
   switch (raw.type) {

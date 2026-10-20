@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { AgentEvent, RunHandle, RunResult } from "../../core/src/types.js";
+import { childEnvironment } from "../../core/src/runtime.js";
 class Stream<T> implements AsyncIterable<T> {
   private values: T[] = [];
   private wake?: () => void;
@@ -48,7 +49,7 @@ export function runProcess(
   void sessionId.catch(() => {});
   const child = spawn(command, args, {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...childEnvironment(), ...env },
     stdio: ["pipe", "pipe", "pipe"],
     detached: true,
   });

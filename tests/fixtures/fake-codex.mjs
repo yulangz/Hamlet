@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { checkCLI } from "./hamlet-cli-check.mjs";
 import { join } from "node:path";
 if (process.argv[2] === "mcp" && process.argv[3] === "list") {
+  if (process.env.FAKE_CODEX_CONFIG_ERROR) {
+    console.error(process.env.FAKE_CODEX_CONFIG_ERROR);
+    process.exit(1);
+  }
   console.log("[]");
   process.exit(0);
 }
@@ -35,14 +40,15 @@ console.log(
 if (input.includes("WAIT")) await new Promise((r) => setTimeout(r, 30000));
 if (process.env.FAKE_EDIT)
   writeFileSync(join(process.cwd(), "result.txt"), input);
+const identity = await checkCLI(input);
 console.log(
   JSON.stringify({
     type: "item.completed",
     item: {
-      type: "mcp_tool_call",
-      server: "hamlet",
-      tool: "whoami",
-      result: { id: session },
+      type: "command_execution",
+      command: "hamlet call whoami '{}'",
+      aggregated_output: JSON.stringify(identity),
+      exit_code: 0,
     },
   }),
 );

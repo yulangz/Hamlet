@@ -44,6 +44,17 @@ export async function connect(autoStart = true): Promise<Client> {
   const url = runtimeEnv("URL"),
     token = runtimeEnv("TOKEN");
   if (url && token) return new Client(url, token);
+  // A partial child context must never silently acquire local Owner authority.
+  if (url || token || runtimeEnv("INSTANCE_ID"))
+    throw new Error(
+      "Hamlet 实例连接信息不完整；需要 URL 和 TOKEN，禁止回退 Owner",
+    );
+  const bellURL = process.env.DOORBELL_URL,
+    bellToken = process.env.DOORBELL_TOKEN;
+  if (bellURL && bellToken)
+    return new Client(new URL(bellURL).origin, bellToken);
+  if (bellURL || bellToken || process.env.DOORBELL_AGENT_ID)
+    throw new Error("doorbell 连接信息不完整；禁止回退 Owner");
   const dir = dataDir();
   const discover = async () => {
     try {

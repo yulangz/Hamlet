@@ -80,26 +80,19 @@ test("新 workdir 使用 .hamlet；已有 .detached 标记与实例基准原地�
   }
 });
 
-test("harness 注入 hamlet 内置工具；禁用 Codex 项目遗留 detached namespace，避免重复连接", () => {
+test("harness 默认不注入 MCP 或凭据；旧 CLI 仍为同一入口", () => {
   const o = {
     cwd: "/tmp",
     systemPrompt: "system",
     prompt: "prompt",
     env: {},
-    innerTools: {
-      command: "/node",
-      args: ["/inner"],
-      env: instanceEnvironment("http://127.0.0.1:1", "token", "abcdef-1"),
-    },
   };
   const args = codexArgs(o);
-  assert.ok(args.includes("mcp_servers.detached.enabled=false"));
-  assert.ok(args.includes("mcp_servers.hamlet.enabled=true"));
-  assert.ok(args.some((x) => x.startsWith("mcp_servers.hamlet.env=")));
+  assert.ok(!args.some((x) => x.includes("mcp_servers")));
   const claude = claudeArgs(o);
   const config = JSON.parse(claude[claude.indexOf("--mcp-config") + 1]);
-  assert.ok(config.mcpServers.hamlet);
-  assert.equal(config.mcpServers.detached, undefined);
+  assert.deepEqual(config, { mcpServers: {} });
+  assert.ok(claude.includes("--strict-mcp-config"));
   const primary = execFileSync(
       process.execPath,
       [resolve("bin/hamlet.js"), "--help"],

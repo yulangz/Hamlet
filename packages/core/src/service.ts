@@ -8,7 +8,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { join, isAbsolute } from "node:path";
+import { join, isAbsolute, dirname } from "node:path";
 import { Store } from "./store.js";
 import { Auth } from "./auth.js";
 import {
@@ -21,7 +21,11 @@ import {
   type RunHandle,
 } from "./types.js";
 import * as wd from "./workdirs.js";
-import { instanceEnvironment, workdirMetadataDir } from "./runtime.js";
+import {
+  instanceEnvironment,
+  workdirMetadataDir,
+  childEnvironment,
+} from "./runtime.js";
 import { Observer, senderInfo, triggerSnapshot, page } from "./observe.js";
 const short = (n: number) => {
   const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
@@ -43,7 +47,8 @@ export class Service extends EventEmitter {
   constructor(
     public dir: string,
     public harnesses: Record<string, Harness>,
-    public innerPath: string,
+    public cliPath: string,
+    public skillDir = join(dirname(cliPath), "../skills/hamlet"),
   ) {
     super();
     this.store = new Store(dir);
@@ -892,7 +897,7 @@ export class Service extends EventEmitter {
           : "")
       : "";
     const sender = senderInfo(m);
-    const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}`;
+    const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}\n\n[Hamlet runtime]\nUse CLI/HTTP with your existing instance identity. Before Hamlet operations read the Skill at ${JSON.stringify(join(this.skillDir, "SKILL.md"))}. CLI: "$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'. Never print credentials, read Owner secrets, or change authentication environment. HAMLET_URL/HAMLET_TOKEN are provided only via environment. Every message triggers execution immediately; no self-message polling. This guidance also applies to resumed sessions previously using MCP.`;
     if (fresh) {
       i = {
         id,
@@ -1030,15 +1035,13 @@ export class Service extends EventEmitter {
         model: config.model,
         options: config.harness_options,
         env: {
-          ...config.extra_env,
+          ...childEnvironment(config.extra_env, {}),
           ...innerEnv,
+          HAMLET_CLI: this.cliPath,
+          HAMLET_NODE: process.execPath,
+          HAMLET_SKILL_DIR: this.skillDir,
           HAMLET_RUN_ID: run.id,
           DETACHED_RUN_ID: run.id,
-        },
-        innerTools: {
-          command: process.execPath,
-          args: [this.innerPath],
-          env: innerEnv,
         },
       };
       const handle = fresh

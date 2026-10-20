@@ -33,14 +33,14 @@ try {
         run_mode: "resident",
         harness_options: { model_reasoning_effort: "low" },
         system_prompt_tpl:
-          "You are a bounded integration test. Do not edit files. Use hamlet whoami when asked; otherwise use no tools. Reply briefly.",
+          "You are a bounded integration test. Do not edit files. Use the Hamlet CLI whoami command with the existing environment when asked; otherwise use no tools. Reply briefly.",
       },
       a,
     );
   const m = s.ring(a, {
     target: l.id,
     prompt:
-      "Call the hamlet whoami MCP tool once. Then reply HAMLET_SMOKE_FORK followed by your instance ID.",
+      "Run the Hamlet CLI whoami command once using the provided HAMLET_NODE and HAMLET_CLI environment variables. Do not print credentials. Then reply HAMLET_SMOKE_FORK followed by your instance ID.",
   });
   const r = await wait(m.id);
   console.log(
@@ -73,9 +73,13 @@ try {
   )
     throw Error("Resume context missing");
   const e = await s.call("run_events", { id: r.id }, a);
-  if (!e.some((x) => x.type === "tool_call" || x.type === "tool_result"))
-    throw Error("No inner MCP tool call observed");
-  console.log("Live Codex fork/resume + injected MCP: PASS");
+  if (
+    !e.some(
+      (x) => x.type === "command" && String(x.command).includes("HAMLET_CLI"),
+    )
+  )
+    throw Error("No Hamlet CLI command observed");
+  console.log("Live Codex fork/resume + restricted CLI: PASS");
 } finally {
   await d.close();
   rmSync(dir, { recursive: true, force: true });

@@ -23,6 +23,7 @@ corepack pnpm check
 | `tests/lifecycle.test.ts`   | 并发启动、宿主退出后 daemon 存活、硬崩溃恢复、遗留子进程和脚本恢复                               |
 | `tests/observation.test.ts` | 排队原因、消息来源、Owner 查询及分页、历史快照、旧库迁移和损坏日志尾行                           |
 | `tests/branding.test.ts`    | Hamlet 命名、新旧 CLI/环境变量/数据目录/工作目录标记及认证兼容                                   |
+| `tests/skill-cli.test.ts` | Skill 安装/拒绝覆盖、缺失凭据拒绝 Owner 回退、无 MCP 的 Codex/Claude 子进程 CLI 身份与权限、通信及 fork/resume |
 | `tests/doorbell_test.py`    | Python ring 请求、持久状态与定时入口                                                             |
 | `tests/ui*.e2e.ts`          | Chromium 页面中的配置、脚本、实例历史、diff/merge、消息重试、执行语义与阻塞原因                  |
 
@@ -36,9 +37,9 @@ corepack pnpm check
 HAMLET_CODEX_CONFIG_TEST_BIN=codex corepack pnpm exec tsx --test tests/codex-config.test.ts
 ```
 
-该测试在隔离的 `CODEX_HOME` 和受信任项目目录中，覆盖 fork/resume、用户/项目配置及两种 `harness_options` 写法下，缺失、不完整、已有 stdio、已有 HTTP 的旧 `detached` 条目。验证旧条目被禁用、`hamlet` 工具及身份环境正确、其他 MCP 保留且原配置文件未被修改。未设置变量时，常规测试会明确跳过这一项。
+该测试在隔离的 `CODEX_HOME` 和受信任项目目录中，覆盖 fork/resume、用户/项目配置及两种 `harness_options` 写法下，缺失、不完整、已有 stdio、已有 HTTP 和空表的旧条目。验证 `hamlet`/`detached` 两个命名空间：已有条目被禁用、无配置时不生成条目、不注入工具或身份、其他 MCP 保留且原配置文件未被修改。未设置变量时，常规测试会明确跳过这一项。
 
-Codex harness 每次启动前执行一次只读的 `codex mcp list --json` 配置检查（最多 5 秒）。已有传输时只禁用旧条目；只有 CLI 明确报告 `mcp_servers.detached` 缺失传输时，才为禁用条目补入不携带内置工具参数或身份的 stdio 占位配置。这样避免无条件补 `command` 与已有 HTTP `url` 冲突。其他检查错误仍由正常 `exec` 路径报告。
+Codex harness 每次启动前执行只读的 `codex mcp list --json` 配置检查（每次最多 5 秒，两个旧条目均损坏时最多三次）。已有传输时只禁用已有 `hamlet`/`detached` 条目；只有 CLI 明确报告其中一个缺失传输时，才为禁用条目补入不携带内置工具参数或身份的 stdio 占位配置。这样避免无条件补 `command` 与已有 HTTP `url` 冲突。无法检查/解析有效配置时不启动模型回合，以免在未知配置下继承旧 Owner MCP；诊断不会回显配置内容。
 
 再按需进行会调用模型的完整 smoke 验证：
 
@@ -46,7 +47,7 @@ Codex harness 每次启动前执行一次只读的 `codex mcp list --json` 配�
 node scripts/smoke-codex.mjs
 ```
 
-需要本机已安装并登录 Codex，会消耗模型额度。此脚本在临时目录验证新会话、注入的 `whoami` MCP 工具、上下文 resume，并在退出时关闭测试 daemon。它不属于常规 `check`。
+需要本机已安装并登录 Codex，会消耗模型额度。此脚本在临时目录验证新会话、通过 CLI 执行的受限 `whoami` 身份、上下文 resume，并在退出时关闭测试 daemon。它不属于常规 `check`。
 
 Claude 的常规测试验证 CLI 参数、事件与调度契约；真实模型调用需另行在已登录的目标环境验证。Linux 是当前自动验证平台；macOS 的 APFS clone 与 launchd 分支需在目标机器验证。
 
@@ -59,3 +60,9 @@ Claude 的常规测试验证 CLI 参数、事件与调度契约；真实模型�
 - 设计文档及本地部署复盘不随源码发布；需要保留时放在仓库外。不要使用 `git add -f` 绕过这些规则。
 
 发布前用 `git status --short`、`git diff --cached --stat` 和 `git ls-files --stage` 核对提交内容与入口文件权限。克隆后安装依赖并重新构建即可生成运行入口。
+
+## Skill 验证
+
+`skills/hamlet/SKILL.md` 是入口，references 分别维护配置、API、协作流程。人工核对两种情景：只给人数/模型/任务时停在配置缺项询问；已有完整授权时直接生成真实请求、不重复确认。不能用只匹配文案的测试声称模型一定服从 Skill；自动测试覆盖真实接口和身份路径，行为约束仍由加载 Skill 的调用 Agent 遵循。
+
+构建后可在无 MCP 配置的宿主用 `hamlet skill install --path /absolute/skills/hamlet` 安装，再执行明确授权的创建/触发/查询/消息/收尾。常规测试用 fixture 子进程实际调用 CLI，不消耗模型额度；不代表已执行真实 Codex/Claude 的模型任务。

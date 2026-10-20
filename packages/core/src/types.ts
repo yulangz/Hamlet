@@ -27,7 +27,6 @@ export interface StartOptions {
   model?: string;
   options?: Row;
   env: Record<string, string>;
-  innerTools: { command: string; args: string[]; env: Record<string, string> };
 }
 export interface ResumeOptions extends Omit<StartOptions, "systemPrompt"> {
   sessionId: string;
