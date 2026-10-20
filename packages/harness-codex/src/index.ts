@@ -6,6 +6,7 @@ import type {
 } from "../../core/src/types.js";
 import { runtimeEnv } from "../../core/src/runtime.js";
 import { runProcess, stopProcess } from "./process.js";
+import { spawnSync } from "node:child_process";
 function toml(v: unknown): string {
   if (v === null) throw Error("TOML 不支持 null");
   if (Array.isArray(v)) return `[${v.map(toml).join(",")}]`;
@@ -15,7 +16,10 @@ function toml(v: unknown): string {
       .join(",")}}`;
   return JSON.stringify(v);
 }
-export function codexArgs(o: StartOptions | ResumeOptions): string[] {
+export function codexArgs(
+  o: StartOptions | ResumeOptions,
+  detachedTransport: "preserve" | "fallback" = "preserve",
+): string[] {
   const resume = "sessionId" in o;
   const args = [
     "exec",
@@ -33,6 +37,12 @@ export function codexArgs(o: StartOptions | ResumeOptions): string[] {
     "mcp_servers.hamlet.args": o.innerTools.args,
     "mcp_servers.hamlet.env": o.innerTools.env,
   };
+  if (detachedTransport === "fallback") {
+    // A disabled entry still needs a transport in Codex 0.163. Do not give
+    // this placeholder the inner tool's arguments or identity environment.
+    settings["mcp_servers.detached.command"] = process.execPath;
+    settings["mcp_servers.detached.args"] = [];
+  }
   if (!resume)
     settings.developer_instructions = (o as StartOptions).systemPrompt;
   for (const [k, v] of Object.entries(settings)) {
@@ -40,6 +50,33 @@ export function codexArgs(o: StartOptions | ResumeOptions): string[] {
     args.push("-c", `${k}=${toml(v)}`);
   }
   args.push("-");
+  return args;
+}
+export function codexLaunchArgs(
+  command: string,
+  o: StartOptions | ResumeOptions,
+): string[] {
+  const args = codexArgs(o, "preserve");
+  const configArgs = args.flatMap((arg, i) =>
+    arg === "-c" ? [arg, args[i + 1]] : [],
+  );
+  // Let Codex resolve user/project config and CLI overrides itself. Inserting
+  // a command unconditionally would break an inherited HTTP transport: Codex
+  // deep-merges overrides and rejects command + url even when disabled.
+  // `mcp list` parses configuration without starting MCPs or requesting a model.
+  const probe = spawnSync(command, ["mcp", "list", "--json", ...configArgs], {
+    cwd: o.cwd,
+    env: { ...process.env, ...o.env },
+    encoding: "utf8",
+    timeout: 5000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (
+    probe.status !== 0 &&
+    /invalid transport\s+in `mcp_servers\.detached`/.test(probe.stderr || "")
+  )
+    return codexArgs(o, "fallback");
+  // Other failures retain the normal exec path and its original diagnostics.
   return args;
 }
 export function normalize(raw: any): AgentEvent[] {
@@ -113,7 +150,7 @@ export class CodexHarness implements Harness {
   private launch(o: StartOptions | ResumeOptions) {
     return runProcess(
       this.command,
-      codexArgs(o),
+      codexLaunchArgs(this.command, o),
       o.cwd,
       o.env,
       o.prompt,

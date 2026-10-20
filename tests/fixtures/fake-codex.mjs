@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+if (process.argv[2] === "mcp" && process.argv[3] === "list") {
+  console.log("[]");
+  process.exit(0);
+}
 let input = "";
 for await (const c of process.stdin) input += c;
 if (process.env.FAKE_INVOCATIONS)
