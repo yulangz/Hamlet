@@ -1,0 +1,166 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  renameSync,
+  existsSync,
+  rmSync,
+} from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import {
+  dataDir,
+  runtimeEnv,
+  workdirMetadataDir,
+  instanceEnvironment,
+} from "../packages/core/src/runtime.js";
+import {
+  setupWorkdir,
+  prepare,
+  cleanup,
+  OWNER,
+} from "../packages/core/src/index.js";
+import { codexArgs } from "../packages/harness-codex/src/index.js";
+import { claudeArgs } from "../packages/harness-claude/src/index.js";
+import { createDaemon } from "../packages/daemon/src/index.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Controlled } from "./helpers.js";
+
+test("Hamlet 默认目录及变量优先级；旧数据目录直接复用而不新建空数据库", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hamlet-brand-home-"));
+  try {
+    assert.equal(dataDir({}, dir), join(dir, ".hamlet"));
+    mkdirSync(join(dir, ".detached"));
+    writeFileSync(join(dir, ".detached/state.db"), "existing");
+    assert.equal(dataDir({}, dir), join(dir, ".detached"));
+    assert.equal(existsSync(join(dir, ".hamlet")), false);
+    assert.equal(dataDir({ DETACHED_HOME: "/old" }, dir), "/old");
+    assert.equal(
+      dataDir({ HAMLET_HOME: "/new", DETACHED_HOME: "/old" }, dir),
+      "/new",
+    );
+    assert.equal(runtimeEnv("URL", { DETACHED_URL: "old" }), "old");
+    assert.equal(
+      runtimeEnv("URL", { HAMLET_URL: "new", DETACHED_URL: "old" }),
+      "new",
+    );
+    const env = instanceEnvironment("http://127.0.0.1:1", "token", "abcdef-1");
+    assert.equal(env.HAMLET_TOKEN, env.DETACHED_TOKEN);
+    assert.equal(env.HAMLET_INSTANCE_ID, env.DETACHED_INSTANCE_ID);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("新 workdir 使用 .hamlet；已有 .detached 标记与实例基准原地复用", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hamlet-brand-layout-"));
+  try {
+    const w = setupWorkdir({ workdir: join(dir, "work"), git_init: false });
+    assert.equal(existsSync(join(w.root, ".hamlet/workdir.json")), true);
+    renameSync(join(w.root, ".hamlet"), join(w.root, ".detached"));
+    writeFileSync(join(w.main_path, "existing"), "data");
+    const reused = setupWorkdir({ workdir: w.root });
+    assert.equal(reused.id, w.id);
+    assert.equal(workdirMetadataDir(w.root), join(w.root, ".detached"));
+    assert.equal(readFileSync(join(w.main_path, "existing"), "utf8"), "data");
+    const path = prepare(reused, "abcdef-1");
+    assert.equal(existsSync(join(w.root, ".detached/bases/abcdef-1")), true);
+    assert.equal(existsSync(join(w.root, ".hamlet")), false);
+    cleanup(reused, { id: "abcdef-1", worktree_path: path });
+    assert.equal(existsSync(path), false);
+    assert.equal(existsSync(join(w.root, ".detached/bases/abcdef-1")), false);
+    assert.equal(existsSync(w.base_path), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("harness 注入 hamlet 内置工具；禁用 Codex 项目遗留 detached namespace，避免重复连接", () => {
+  const o = {
+    cwd: "/tmp",
+    systemPrompt: "system",
+    prompt: "prompt",
+    env: {},
+    innerTools: {
+      command: "/node",
+      args: ["/inner"],
+      env: instanceEnvironment("http://127.0.0.1:1", "token", "abcdef-1"),
+    },
+  };
+  const args = codexArgs(o);
+  assert.ok(args.includes("mcp_servers.detached.enabled=false"));
+  assert.ok(args.includes("mcp_servers.hamlet.enabled=true"));
+  assert.ok(args.some((x) => x.startsWith("mcp_servers.hamlet.env=")));
+  const claude = claudeArgs(o);
+  const config = JSON.parse(claude[claude.indexOf("--mcp-config") + 1]);
+  assert.ok(config.mcpServers.hamlet);
+  assert.equal(config.mcpServers.detached, undefined);
+  const primary = execFileSync(
+      process.execPath,
+      [resolve("bin/hamlet.js"), "--help"],
+      { encoding: "utf8" },
+    ),
+    legacy = execFileSync(
+      process.execPath,
+      [resolve("bin/detached.js"), "--help"],
+      { encoding: "utf8" },
+    );
+  assert.match(primary, /Hamlet · 坊/);
+  assert.match(primary, /hamlet start/);
+  assert.equal(primary, legacy);
+});
+
+test("新旧认证环境与 cookie 均可连接同一个 Hamlet daemon", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hamlet-brand-auth-"));
+  const d = await createDaemon({ dir, harnesses: { codex: new Controlled() } });
+  const clients: Client[] = [];
+  try {
+    const url = await d.listen();
+    const health = (await (await fetch(url + "/health")).json()) as any;
+    assert.equal(health.name, "Hamlet");
+    for (const cookie of ["hamlet", "detached"]) {
+      const r = await fetch(url + "/api/identity", {
+        headers: { Cookie: `${cookie}=${d.service.auth.ownerToken}` },
+      });
+      assert.equal(r.status, 200);
+    }
+    const login = await fetch(url + "/?token=" + d.service.auth.ownerToken, {
+      redirect: "manual",
+    });
+    assert.match(login.headers.get("set-cookie")!, /^hamlet=/);
+    for (const prefix of ["HAMLET", "DETACHED"]) {
+      const env: Record<string, string> = Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([k, v]) =>
+            !!v && !k.startsWith("HAMLET_") && !k.startsWith("DETACHED_"),
+        ),
+      ) as any;
+      env[`${prefix}_URL`] = url;
+      env[`${prefix}_TOKEN`] = d.service.auth.ownerToken;
+      const c = new Client({ name: "hamlet-brand-check", version: "1" });
+      clients.push(c);
+      await c.connect(
+        new StdioClientTransport({
+          command: process.execPath,
+          args: [resolve("packages/mcp-host/dist/index.js")],
+          env,
+        }),
+      );
+      assert.equal(c.getServerVersion()?.name, "hamlet-host");
+      assert.ok(
+        (await c.listTools()).tools.some((t) => t.name === "message_list"),
+      );
+      const groups = await c.callTool({ name: "group_list", arguments: {} });
+      assert.ok(!groups.isError);
+    }
+  } finally {
+    for (const c of clients) await c.close();
+    await d.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
