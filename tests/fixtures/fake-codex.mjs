@@ -3,18 +3,11 @@ import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { fakeAppServer } from "./fake-app-server.mjs";
 import { checkCLI } from "./hamlet-cli-check.mjs";
 import { join } from "node:path";
-if (process.argv[2] === "mcp" && process.argv[3] === "list") {
-  if (process.env.FAKE_CODEX_CONFIG_ERROR) {
-    console.error(process.env.FAKE_CODEX_CONFIG_ERROR);
-    process.exit(1);
-  }
-  console.log("[]");
-  process.exit(0);
-}
 if (process.argv[2] === "app-server") {
   await fakeAppServer();
   process.exit(0);
 }
+if (process.argv[2] !== "exec") throw new Error("unsupported fixture command");
 let input = "";
 for await (const c of process.stdin) input += c;
 if (process.env.FAKE_INVOCATIONS)

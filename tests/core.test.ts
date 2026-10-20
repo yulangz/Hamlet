@@ -200,7 +200,7 @@ test("去重规范化角色/ID、默认窗口与过期；doorbell 令牌只可�
   }
 });
 
-test("身份权限、同组解析和跨组隐藏、worker 工具不含管理项", async () => {
+test("身份权限、同组解析和跨组隐藏、worker 无管理权限", async () => {
   const f = await fixture();
   try {
     const worker = await f.agent({ worktree: false }),

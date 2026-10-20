@@ -13,7 +13,7 @@ export function claudeArgs(o: StartOptions | ResumeOptions) {
     "stream-json",
     "--verbose",
     "--dangerously-skip-permissions",
-    // Ignore inherited MCP registrations, including old Hamlet owner servers.
+    // Child collaboration uses CLI/HTTP; do not inherit server registrations.
     "--strict-mcp-config",
     "--mcp-config",
     '{"mcpServers":{}}',

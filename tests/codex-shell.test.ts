@@ -19,11 +19,11 @@ import {
 } from "../packages/core/src/index.js";
 import {
   CodexHarness,
-  codexLaunchArgs,
+  codexArgs,
 } from "../packages/harness-codex/src/index.js";
 import { assertCodexShellEnvironment } from "../packages/harness-codex/src/environment.js";
 import { Controlled } from "./helpers.js";
-const command = process.env.HAMLET_CODEX_CONFIG_TEST_BIN;
+const command = process.env.HAMLET_CODEX_SHELL_TEST_BIN;
 const configArgs = (args: string[]) =>
   args.flatMap((arg, i) => (arg === "-c" ? [arg, args[i + 1]] : []));
 
@@ -190,7 +190,7 @@ test(
   {
     skip:
       !command &&
-      "set HAMLET_CODEX_CONFIG_TEST_BIN=codex for real command-environment validation",
+      "set HAMLET_CODEX_SHELL_TEST_BIN=codex for real command-environment validation",
   },
   async (t) => {
     const home = mkdtempSync(join(tmpdir(), "hamlet-codex-shell-"));
@@ -281,7 +281,7 @@ test(
                 systemPrompt: "unused",
                 ...(mode === "resume" ? { sessionId: "unused-session" } : {}),
               };
-              const args = codexLaunchArgs(command!, o);
+              const args = codexArgs(o);
               assert.ok(!JSON.stringify(args).includes(token));
               if (policy.safe) {
                 assertCodexShellEnvironment(command!, args, o);

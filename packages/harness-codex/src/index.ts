@@ -4,10 +4,9 @@ import type {
   ResumeOptions,
   AgentEvent,
 } from "../../core/src/types.js";
-import { runtimeEnv, childEnvironment } from "../../core/src/runtime.js";
+import { runtimeEnv } from "../../core/src/runtime.js";
 import { runProcess, stopProcess } from "./process.js";
 import { assertCodexShellEnvironment } from "./environment.js";
-import { spawnSync } from "node:child_process";
 function toml(v: unknown): string {
   if (v === null) throw Error("TOML 不支持 null");
   if (Array.isArray(v)) return `[${v.map(toml).join(",")}]`;
@@ -17,10 +16,7 @@ function toml(v: unknown): string {
       .join(",")}}`;
   return JSON.stringify(v);
 }
-export function codexArgs(
-  o: StartOptions | ResumeOptions,
-  legacy: Record<string, "preserve" | "fallback"> = {},
-): string[] {
+export function codexArgs(o: StartOptions | ResumeOptions): string[] {
   const resume = "sessionId" in o;
   const args = [
     "exec",
@@ -31,15 +27,6 @@ export function codexArgs(
   ];
   if (o.model) args.push("-m", o.model);
   const settings: Record<string, unknown> = { ...o.options };
-  // Disable inherited Hamlet MCPs during transition. No tool process or
-  // credential is injected; unrelated user MCPs remain the user's choice.
-  for (const [name, transport] of Object.entries(legacy)) {
-    settings[`mcp_servers.${name}.enabled`] = false;
-    if (transport === "fallback") {
-      settings[`mcp_servers.${name}.command`] = process.execPath;
-      settings[`mcp_servers.${name}.args`] = [];
-    }
-  }
   if (!resume)
     settings.developer_instructions = (o as StartOptions).systemPrompt;
   for (const [k, v] of Object.entries(settings)) {
@@ -48,50 +35,6 @@ export function codexArgs(
   }
   args.push("-");
   return args;
-}
-export function codexLaunchArgs(
-  command: string,
-  o: StartOptions | ResumeOptions,
-): string[] {
-  const legacy: Record<string, "preserve" | "fallback"> = {};
-  // Read effective user/project/option configuration without starting servers
-  // or a model. Absent entries stay absent. Codex still validates disabled
-  // transports, so only malformed legacy entries get a credential-free stub.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const args = codexArgs(o, legacy);
-    const configArgs = args.flatMap((arg, i) =>
-      arg === "-c" ? [arg, args[i + 1]] : [],
-    );
-    const probe = spawnSync(command, ["mcp", "list", "--json", ...configArgs], {
-      cwd: o.cwd,
-      env: { ...childEnvironment(), ...o.env },
-      encoding: "utf8",
-      timeout: 5000,
-      maxBuffer: 1024 * 1024,
-    });
-    if (probe.status === 0) {
-      try {
-        for (const server of JSON.parse(probe.stdout))
-          if (["hamlet", "detached"].includes(server.name))
-            legacy[server.name] ??= "preserve";
-      } catch {
-        throw new Error(
-          "无法解析 Codex 有效配置；未启动子 Agent，请检查 codex mcp list --json",
-        );
-      }
-      return codexArgs(o, legacy);
-    }
-    const malformed =
-      /invalid transport\s+in `mcp_servers\.(hamlet|detached)`/.exec(
-        probe.stderr || "",
-      );
-    if (!malformed || legacy[malformed[1]] === "fallback")
-      throw new Error(
-        "无法检查 Codex 有效配置；未启动子 Agent，请检查 codex mcp list --json",
-      );
-    legacy[malformed[1]] = "fallback";
-  }
-  return codexArgs(o, legacy);
 }
 export function normalize(raw: any): AgentEvent[] {
   switch (raw.type) {
@@ -162,7 +105,7 @@ export class CodexHarness implements Harness {
     return this.launch(o);
   }
   private launch(o: StartOptions | ResumeOptions) {
-    const args = codexLaunchArgs(this.command, o);
+    const args = codexArgs(o);
     assertCodexShellEnvironment(this.command, args, o);
     return runProcess(
       this.command,

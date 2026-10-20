@@ -897,7 +897,7 @@ export class Service extends EventEmitter {
           : "")
       : "";
     const sender = senderInfo(m);
-    const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}\n\n[Hamlet runtime]\nUse CLI/HTTP with your existing instance identity. Before Hamlet operations read the Skill at ${JSON.stringify(join(this.skillDir, "SKILL.md"))}. CLI: "$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'. Never print credentials, read Owner secrets, or change authentication environment. HAMLET_URL/HAMLET_TOKEN are provided only via environment. Every message triggers execution immediately; no self-message polling. This guidance also applies to resumed sessions previously using MCP.`;
+    const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}\n\n[Hamlet runtime]\nUse CLI/HTTP with your existing instance identity. Before Hamlet operations read the Skill at ${JSON.stringify(join(this.skillDir, "SKILL.md"))}. CLI: "$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'. Never print credentials, read Owner secrets, or change authentication environment. HAMLET_URL/HAMLET_TOKEN are provided only via environment. Every message triggers execution immediately; no self-message polling.`;
     if (fresh) {
       i = {
         id,

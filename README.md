@@ -178,11 +178,11 @@ stdout/stderr 写入 `doorbells/<短ID>/output.log`，UI 实时查看。崩溃�
 
 SQLite 使用 WAL。标准化事件在 `runs/<run_id>.jsonl`，原始事件在同目录的 `.raw.jsonl`。重启后运行中的记录标记 interrupted，触发消息标记 failed，不自动重放；queued 消息继续调度。已知遗留子进程在核对运行标记/令牌后终止，再恢复调度。
 
-## 旧 MCP 客户端过渡
+## 子 Agent 命令环境
 
-`packages/mcp-host` / `mcp-inner` 保留旧 stdio 协议，已有外部客户端可暂时继续使用，但新安装不再要求注册。已注册的宿主可移除 Hamlet/Detached server 后加载 Skill。Codex 子进程只读检查有效配置，并禁用已有 `hamlet`/`detached` server；缺失条目不新建，旧禁用条目缺传输时才补无身份的禁用占位。不会写用户配置，其他 MCP 保持用户选择。每次 Codex fork/resume 在启动模型前还会用相同配置启动本地 app-server，通过 command/exec 核对命令环境中的受限身份和 CLI 路径；若过滤或替换这些变量，或检查不可用/超时，就拒绝启动，不回退 Owner、不放宽用户环境策略。探针不调用模型，不将令牌写入参数、prompt 或日志。Claude 使用 `--strict-mcp-config` 加空 server 集合，隔离继承的 MCP 注册。两个 harness 都不注入子进程 MCP 工具或凭据。
+Hamlet 提供 Skill、CLI 与 HTTP 入口，不再提供 MCP server，也不探测或迁移旧 MCP 配置。Codex fork/resume 直接生成 CLI 参数；启动模型前使用相同参数中的配置启动本地 app-server，通过 command/exec 核对命令环境中的受限身份和 CLI/Skill 路径。若这些变量被过滤或替换，或检查不可用/超时，就拒绝启动，不回退 Owner、不放宽用户环境策略。探针不调用模型，令牌仅走环境，不写入参数、prompt 或日志。Claude 使用 strict 空 server 集合，子 Agent 都通过 CLI/HTTP 工作。
 
-已有实例仍保留模型/模板等快照，新回合会收到 CLI/Skill 提示和环境，旧 MCP 不再是工作依赖；如需更新任务配置，按既有规则换新实例。无需删除运行数据库或迁移 daemon 身份。
+已有实例继续沿用模型/模板等配置快照，每回合收到 CLI/Skill 提示和环境；如需更新任务配置，按既有规则换新实例。
 
 ## 从 Detached 升级
 
@@ -191,7 +191,6 @@ SQLite 使用 WAL。标准化事件在 `runs/<run_id>.jsonl`，原始事件在�
 - 旧 `detached` 命令和 `bin/detached.js` 保留为别名，指向同一服务。
 - `HAMLET_HOME`、`HAMLET_URL`、`HAMLET_TOKEN`、`HAMLET_CODEX_BIN`、`HAMLET_CLAUDE_BIN` 为主要环境变量，对应的 `DETACHED_*` 仍可使用；同时设置时以 `HAMLET_*` 为准。
 - 升级不搬动数据库、日志、Git 分支或已有工作目录。旧数据目录 `~/.detached/` 和旧工作目录标记 `.detached/workdir.json` 继续被识别；新工作目录使用 `.hamlet/`。
-- 已有 MCP 配置可把 `[mcp_servers.detached]` 和对应的 `.env` 表改为 `[mcp_servers.hamlet]`，保留原启动路径，并把 `DETACHED_HOME` 改为 `HAMLET_HOME`，值保持原数据目录。移除旧表，避免重复加载；之后重连 MCP 或新开宿主会话。原配置名也能继续连接新版 server。
 - 新安装的用户服务名为 `hamlet.service`（Linux）或 `local.hamlet`（macOS）。若曾安装旧用户服务，可先用 `hamlet uninstall-service` 移除旧服务，再用 `hamlet install-service` 安装新名称。
 
 所有命令和宿主应指向同一个数据目录；若显式指定 `HAMLET_HOME`，在 Owner CLI 与 daemon 服务环境中保持一致。`doorbell`、`message_to`、group ID、实例 ID 和 HTTP API 路径保持原有含义。
@@ -211,7 +210,7 @@ corepack pnpm test:ui
 node scripts/smoke-codex.mjs
 ```
 
-测试包括调度、权限、配置快照、持久恢复、Git 和非 Git 目录、真实子进程、MCP stdio、Python doorbell、HTTP/SSE 与 Chromium 页面操作。常规测试使用受控 harness / CLI fixture，不消耗模型额度。`smoke-codex.mjs` 额外验证真实 Codex 的受限 CLI 身份、fork、上下文 resume。
+测试包括调度、权限、配置快照、持久恢复、Git 和非 Git 目录、真实子进程、CLI/HTTP 权限、Python doorbell、HTTP/SSE 与 Chromium 页面操作。常规测试使用受控 harness / CLI fixture，不消耗模型额度。`smoke-codex.mjs` 额外验证真实 Codex 的受限 CLI 身份、fork、上下文 resume。
 
 Claude 作为第二个适配器共用同一 `Harness` 接口，使用 `claude -p --output-format stream-json --verbose --dangerously-skip-permissions`。普通测试验证其事件/参数契约和子进程调度；真实 Claude 运行依赖本机登录与 CLI 的运行限制。
 

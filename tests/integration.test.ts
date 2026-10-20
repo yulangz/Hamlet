@@ -11,8 +11,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { createDaemon } from "../packages/daemon/src/index.js";
 import { Client } from "../packages/core/src/client.js";
 import {
@@ -24,12 +22,15 @@ import {
   claudeArgs,
   normalizeClaude,
 } from "../packages/harness-claude/src/index.js";
-import { toolsFor } from "../packages/mcp-host/src/server.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { childEnvironment } from "../packages/core/src/runtime.js";
 import { OWNER } from "../packages/core/src/index.js";
 import { until, Controlled } from "./helpers.js";
+const exec = promisify(execFile);
 const fixture = resolve("tests/fixtures/fake-codex.mjs");
 
-test("HTTP 认证、cookie、Origin / Host、防跨组 SSE；worker 无管理工具", async () => {
+test("HTTP 认证、cookie、Origin / Host、防跨组 SSE；worker 无管理权限", async () => {
   const dir = mkdtempSync(join(tmpdir(), "detached-http-")),
     h = new Controlled();
   const d = await createDaemon({ dir, harnesses: { codex: h } });
@@ -86,12 +87,11 @@ test("HTTP 认证、cookie、Origin / Host、防跨组 SSE；worker 无管理工
       wc = new Client(url, d.service.auth.sign(wa));
     await assert.rejects(wc.call("group_create", { name: "bad" }), /无权限/);
     assert.equal((await wc.call("whoami")).id, wa.id);
-    assert.deepEqual(
-      toolsFor("worker", true).map((t) => t.name),
-      ["whoami", "group_agents", "instance_get", "message_to"],
+    await assert.rejects(
+      wc.call("agent_create", { role_name: "bad", workdir: join(dir, "bad") }),
+      /无权限/,
     );
-    assert.ok(toolsFor("admin", true).some((t) => t.name === "agent_create"));
-    assert.ok(!toolsFor("admin", true).some((t) => t.name === "group_delete"));
+    assert.equal((await wc.call("group_agents"))[0].id, l.id);
     const abort = new AbortController();
     const stream = await fetch(url + "/api/events", {
       headers: { Authorization: "Bearer " + token },
@@ -185,62 +185,37 @@ test("真实子进程适配：stdin 安全传参、session/resume、事件和原
   }
 });
 
-test("MCP stdio：Owner 与内置 Worker 经协议调用 daemon", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "detached-mcp-")),
+test("CLI/HTTP：Owner 查询排队与运行，Worker 保持实例身份和权限", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hamlet-cli-transport-")),
     h = new Controlled();
   const d = await createDaemon({ dir, harnesses: { codex: h } });
-  let host: McpClient | undefined, inner: McpClient | undefined;
   try {
     const url = await d.listen();
-    host = new McpClient({ name: "test", version: "1" });
     const env = {
-      ...process.env,
+      ...childEnvironment(),
       HAMLET_HOME: dir,
       HAMLET_URL: url,
       HAMLET_TOKEN: d.service.auth.ownerToken,
-    } as Record<string, string>;
-    await host.connect(
-      new StdioClientTransport({
-        command: process.execPath,
-        args: [resolve("packages/mcp-host/dist/index.js")],
-        env,
-      }),
-    );
-    const tools = await host.listTools();
-    assert.ok(tools.tools.some((t) => t.name === "group_create"));
-    const result = await host.callTool({
-      name: "group_create",
-      arguments: { name: "from MCP" },
-    });
-    const g = JSON.parse((result.content as any)[0].text);
-    const create = await host.callTool({
-      name: "agent_create",
-      arguments: {
-        group: g.id,
-        role_name: "worker",
-        workdir: join(dir, "w"),
-        worktree: false,
-      },
-    });
-    const l = JSON.parse((create.content as any)[0].text);
-    await host.callTool({
-      name: "message_to",
-      arguments: { target: l.id, prompt: "go" },
-    });
-    await until(() => h.calls.length === 1);
-    for (const name of [
-      "message_list",
-      "message_get",
-      "run_list",
-      "run_get",
-      "run_events",
-    ])
-      assert.ok(tools.tools.some((t) => t.name === name));
-    const query = async (name: string, args: any = {}) => {
-      const r = await host!.callTool({ name, arguments: args });
-      assert.ok(!r.isError);
-      return JSON.parse((r.content as any)[0].text);
     };
+    const query = async (name: string, params: any = {}, identityEnv = env) =>
+      JSON.parse(
+        (
+          await exec(
+            process.execPath,
+            [resolve("bin/hamlet.js"), "call", name, JSON.stringify(params)],
+            { env: identityEnv },
+          )
+        ).stdout,
+      );
+    const g = await query("group_create", { name: "from CLI" });
+    const l = await query("agent_create", {
+      group: g.id,
+      role_name: "worker",
+      workdir: join(dir, "w"),
+      worktree: false,
+    });
+    await query("message_to", { target: l.id, prompt: "go" });
+    await until(() => h.calls.length === 1);
     const waiting = await query("message_to", { target: l.id, prompt: "next" });
     assert.equal(waiting.queue_reason.code, "workdir_busy");
     assert.equal(waiting.sender.label, "宿主调用方");
@@ -262,26 +237,17 @@ test("MCP stdio：Owner 与内置 Worker 经协议调用 daemon", async () => {
     assert.ok(
       (await query("run_events", { id: runs[0].id, limit: 1 })).length <= 1,
     );
-    const token = d.service.auth.sign({ kind: "instance", id: l.id + "-1" });
-    inner = new McpClient({ name: "test-inner", version: "1" });
-    await inner.connect(
-      new StdioClientTransport({
-        command: process.execPath,
-        args: [resolve("packages/mcp-inner/dist/index.js")],
-        env: { ...env, HAMLET_TOKEN: token },
-      }),
+    const workerEnv = {
+      ...env,
+      HAMLET_TOKEN: d.service.auth.sign({ kind: "instance", id: l.id + "-1" }),
+    };
+    assert.equal((await query("whoami", {}, workerEnv)).id, l.id + "-1");
+    assert.equal((await query("group_agents", {}, workerEnv))[0].id, l.id);
+    await assert.rejects(
+      query("agent_delete", { id: l.id }, workerEnv),
+      /无权限/,
     );
-    assert.equal((await inner.listTools()).tools.length, 4);
-    const me = await inner.callTool({ name: "whoami", arguments: {} });
-    assert.equal(JSON.parse((me.content as any)[0].text).id, l.id + "-1");
-    const denied = await inner.callTool({
-      name: "agent_delete",
-      arguments: { id: l.id },
-    });
-    assert.equal(denied.isError, true);
   } finally {
-    await inner?.close();
-    await host?.close();
     await d.close();
     rmSync(dir, { recursive: true, force: true });
   }

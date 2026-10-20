@@ -8,11 +8,15 @@ import { resolve, join } from "node:path";
 import { createDaemon } from "../packages/daemon/src/index.js";
 import {
   CodexHarness,
-  codexLaunchArgs,
+  codexArgs,
 } from "../packages/harness-codex/src/index.js";
 import { ClaudeHarness } from "../packages/harness-claude/src/index.js";
 import { OWNER } from "../packages/core/src/index.js";
-import { childEnvironment } from "../packages/core/src/runtime.js";
+import { assertCodexShellEnvironment } from "../packages/harness-codex/src/environment.js";
+import {
+  childEnvironment,
+  instanceEnvironment,
+} from "../packages/core/src/runtime.js";
 import { until } from "./helpers.js";
 const exec = promisify(execFile);
 const cli = resolve("bin/hamlet.js");
@@ -73,18 +77,30 @@ test("子身份凭据不完整时拒绝回退本机 Owner；非法 JSON 不启�
   }
 });
 
-test("Codex 配置检查失败时不启动可能继承 Owner MCP 的回合，也不回显诊断中的凭据", () => {
+test("Codex 命令环境检查失败时拒绝启动且不回显诊断中的凭据", () => {
+  const o = {
+    cwd: process.cwd(),
+    prompt: "unused",
+    systemPrompt: "unused",
+    env: {
+      ...instanceEnvironment("http://127.0.0.1:1", "test-secret", "test-1"),
+      HAMLET_NODE: process.execPath,
+      HAMLET_CLI: cli,
+      HAMLET_SKILL_DIR: resolve("skills/hamlet"),
+      FAKE_APP_SERVER_ERROR: "sensitive-config-diagnostic",
+    },
+  };
   assert.throws(
     () =>
-      codexLaunchArgs(resolve("tests/fixtures/fake-codex.mjs"), {
-        cwd: process.cwd(),
-        prompt: "test",
-        systemPrompt: "test",
-        env: { FAKE_CODEX_CONFIG_ERROR: "sensitive-config-diagnostic" },
-      }),
+      assertCodexShellEnvironment(
+        resolve("tests/fixtures/fake-codex.mjs"),
+        codexArgs(o),
+        o,
+      ),
     (e: any) =>
       e.message.includes("未启动子 Agent") &&
-      !e.message.includes("sensitive-config-diagnostic"),
+      !e.message.includes("sensitive-config-diagnostic") &&
+      !e.message.includes("test-secret"),
   );
 });
 
