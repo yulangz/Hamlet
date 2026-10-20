@@ -23,6 +23,7 @@ corepack pnpm check
 | `tests/lifecycle.test.ts`   | 并发启动、宿主退出后 daemon 存活、硬崩溃恢复、遗留子进程和脚本恢复                               |
 | `tests/observation.test.ts` | 排队原因、消息来源、Owner 查询及分页、历史快照、旧库迁移和损坏日志尾行                           |
 | `tests/branding.test.ts`    | Hamlet 命名、新旧 CLI/环境变量/数据目录/工作目录标记及认证兼容                                   |
+| `tests/codex-shell.test.ts` | 真实 Codex 命令环境的 fork/resume：身份保留、过滤/替换时启动前拒绝、安全 allowlist 不放宽、CLI 无 Owner 提权 |
 | `tests/skill-cli.test.ts` | Skill 安装/拒绝覆盖、缺失凭据拒绝 Owner 回退、无 MCP 的 Codex/Claude 子进程 CLI 身份与权限、通信及 fork/resume |
 | `tests/doorbell_test.py`    | Python ring 请求、持久状态与定时入口                                                             |
 | `tests/ui*.e2e.ts`          | Chromium 页面中的配置、脚本、实例历史、diff/merge、消息重试、执行语义与阻塞原因                  |
@@ -34,12 +35,16 @@ corepack pnpm check
 先验证真实 CLI 的配置解析（无需登录，不消耗模型额度，也不启动 MCP）：
 
 ```bash
-HAMLET_CODEX_CONFIG_TEST_BIN=codex corepack pnpm exec tsx --test tests/codex-config.test.ts
+HAMLET_CODEX_CONFIG_TEST_BIN=codex corepack pnpm exec tsx --test tests/codex-config.test.ts tests/codex-shell.test.ts
 ```
 
 该测试在隔离的 `CODEX_HOME` 和受信任项目目录中，覆盖 fork/resume、用户/项目配置及两种 `harness_options` 写法下，缺失、不完整、已有 stdio、已有 HTTP 和空表的旧条目。验证 `hamlet`/`detached` 两个命名空间：已有条目被禁用、无配置时不生成条目、不注入工具或身份、其他 MCP 保留且原配置文件未被修改。未设置变量时，常规测试会明确跳过这一项。
 
 Codex harness 每次启动前执行只读的 `codex mcp list --json` 配置检查（每次最多 5 秒，两个旧条目均损坏时最多三次）。已有传输时只禁用已有 `hamlet`/`detached` 条目；只有 CLI 明确报告其中一个缺失传输时，才为禁用条目补入不携带内置工具参数或身份的 stdio 占位配置。这样避免无条件补 `command` 与已有 HTTP `url` 冲突。无法检查/解析有效配置时不启动模型回合，以免在未知配置下继承旧 Owner MCP；诊断不会回显配置内容。
+
+另一个回归通过真实 `codex app-server` 的 `command/exec` 路径验证命令环境，而不是直接由 fixture 继承环境：fork/resume × 用户/受信任项目/两种 harness_options × inherit all/core/none、exclude、include_only、自动 secret 过滤、set 替换和 keyed filters。安全配置的实际 CLI 返回 worker，Owner 操作被拒绝；过滤或替换身份的配置在 Harness.start/resume 内直接失败，模型不启动；安全的窄 allowlist 仍过滤无关 secret。测试用临时 HOME/.hamlet 放置真实 Owner daemon，避免“找不到 Owner”掩盖身份丢失。两个真实 Codex 套件均无需登录或模型额度。
+
+生产启动也执行同一条本地 app-server 环境探针：仅对 runtime 身份和路径计算摘要，在私有管道比较，外层只接收成功标记；不回显 app-server 诊断，不把 token 值传入 argv、prompt 或 JSON-RPC。保留原环境策略，不能验证时拒绝启动。检查增加一次短生命周期 app-server，探针内部 7 秒、外层 9 秒超时；需要支持 command/exec 的 Codex（本机验证为 0.163.0）。不写用户配置、不向 daemon 发业务请求。
 
 再按需进行会调用模型的完整 smoke 验证：
 

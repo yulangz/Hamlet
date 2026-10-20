@@ -180,7 +180,7 @@ SQLite 使用 WAL。标准化事件在 `runs/<run_id>.jsonl`，原始事件在�
 
 ## 旧 MCP 客户端过渡
 
-`packages/mcp-host` / `mcp-inner` 保留旧 stdio 协议，已有外部客户端可暂时继续使用，但新安装不再要求注册。已注册的宿主可移除 Hamlet/Detached server 后加载 Skill。Codex 子进程只读检查有效配置，并禁用已有 `hamlet`/`detached` server；缺失条目不新建，旧禁用条目缺传输时才补无身份的禁用占位。不会写用户配置，其他 MCP 保持用户选择。Claude 使用 `--strict-mcp-config` 加空 server 集合，隔离继承的 MCP 注册。两个 harness 都不注入子进程 MCP 工具或凭据。
+`packages/mcp-host` / `mcp-inner` 保留旧 stdio 协议，已有外部客户端可暂时继续使用，但新安装不再要求注册。已注册的宿主可移除 Hamlet/Detached server 后加载 Skill。Codex 子进程只读检查有效配置，并禁用已有 `hamlet`/`detached` server；缺失条目不新建，旧禁用条目缺传输时才补无身份的禁用占位。不会写用户配置，其他 MCP 保持用户选择。每次 Codex fork/resume 在启动模型前还会用相同配置启动本地 app-server，通过 command/exec 核对命令环境中的受限身份和 CLI 路径；若过滤或替换这些变量，或检查不可用/超时，就拒绝启动，不回退 Owner、不放宽用户环境策略。探针不调用模型，不将令牌写入参数、prompt 或日志。Claude 使用 `--strict-mcp-config` 加空 server 集合，隔离继承的 MCP 注册。两个 harness 都不注入子进程 MCP 工具或凭据。
 
 已有实例仍保留模型/模板等快照，新回合会收到 CLI/Skill 提示和环境，旧 MCP 不再是工作依赖；如需更新任务配置，按既有规则换新实例。无需删除运行数据库或迁移 daemon 身份。
 

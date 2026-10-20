@@ -6,6 +6,7 @@ import type {
 } from "../../core/src/types.js";
 import { runtimeEnv, childEnvironment } from "../../core/src/runtime.js";
 import { runProcess, stopProcess } from "./process.js";
+import { assertCodexShellEnvironment } from "./environment.js";
 import { spawnSync } from "node:child_process";
 function toml(v: unknown): string {
   if (v === null) throw Error("TOML 不支持 null");
@@ -161,9 +162,11 @@ export class CodexHarness implements Harness {
     return this.launch(o);
   }
   private launch(o: StartOptions | ResumeOptions) {
+    const args = codexLaunchArgs(this.command, o);
+    assertCodexShellEnvironment(this.command, args, o);
     return runProcess(
       this.command,
-      codexLaunchArgs(this.command, o),
+      args,
       o.cwd,
       o.env,
       o.prompt,

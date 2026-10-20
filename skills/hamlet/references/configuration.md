@@ -34,7 +34,7 @@ group 是通信/管理边界。逻辑 Agent 保存配置；实例保存会话和
 
 如果用户只说“4 个研究员加 Leader，用模型 M 研究 X”，上表许多项未知。先合并询问：身份/职责、fork 还是 resident、共享 direct 还是独立目录/worktree、绝对路径及迁移许可、思考强度、模板/环境/资源、doorbell/完成通知和启动时机。不能先替用户选择再创建。
 
-只有模型具体 ID、版本和可用性取决于已安装 CLI/账号；不要替换用户模型。codex 的 `harness_options` 作为 `-c key=TOML` 传递（如 model_reasoning_effort）；Claude 当前只读取 `effort`，不能把 Codex 参数原样用于 Claude。`model:null` 表示用户明确授权使用 CLI 配置中的模型，不是“没有问”。
+只有模型具体 ID、版本和可用性取决于已安装 CLI/账号；不要替换用户模型。codex 的 `harness_options` 作为 `-c key=TOML` 传递（如 model_reasoning_effort）；Claude 当前只读取 `effort`，不能把 Codex 参数原样用于 Claude。Codex 启动前会通过真实命令环境探针核对受限身份和 CLI 路径；shell_environment_policy 若移除或替换 HAMLET/DETACHED 身份、路径变量，或无法完成检查，就拒绝启动。不会擅自改为 inherit=all、扩大 allowlist 或把 token 写入配置；读取错误后由用户决定如何调整过滤策略。`model:null` 表示用户明确授权使用 CLI 配置中的模型，不是“没有问”。
 
 内置模板变量：`agent_id`、`role`、`group`、`from`、`from_role`、`worktree`、`shared_dir`、`now`，以及 ring/message_to 的 vars。未知变量会在分配实例前报错。直接传 prompt 会替代 prompt_tpl；system_prompt 只在新会话生效。不能将 token 放入模板或 vars。
 
