@@ -30,7 +30,8 @@ export async function createDaemon(
     dir?: string;
     port?: number;
     harnesses?: Record<string, Harness>;
-    innerPath?: string;
+    cliPath?: string;
+    skillDir?: string;
     root?: string;
   } = {},
 ) {
@@ -44,7 +45,8 @@ export async function createDaemon(
       codex: new CodexHarness(),
       claude: new ClaudeHarness(),
     },
-    options.innerPath || join(root, "packages/mcp-inner/dist/index.js"),
+    options.cliPath || join(root, "bin/hamlet.js"),
+    options.skillDir || join(root, "skills/hamlet"),
   );
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
   await app.register(cookie);

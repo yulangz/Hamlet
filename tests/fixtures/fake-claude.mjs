@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { checkCLI } from "./hamlet-cli-check.mjs";
 let input = "";
 for await (const c of process.stdin) input += c;
 const args = process.argv.slice(2),
@@ -12,14 +13,24 @@ console.log(
   JSON.stringify({
     type: "assistant",
     message: {
-      content: [{ type: "tool_use", name: "mcp__hamlet__whoami", input: {} }],
+      content: [
+        {
+          type: "tool_use",
+          name: "Bash",
+          input: { command: "hamlet call whoami" },
+        },
+      ],
     },
   }),
 );
 console.log(
   JSON.stringify({
     type: "user",
-    message: { content: [{ type: "tool_result", content: "identity" }] },
+    message: {
+      content: [
+        { type: "tool_result", content: JSON.stringify(await checkCLI(input)) },
+      ],
+    },
   }),
 );
 console.log(

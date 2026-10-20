@@ -13,8 +13,10 @@ export function claudeArgs(o: StartOptions | ResumeOptions) {
     "stream-json",
     "--verbose",
     "--dangerously-skip-permissions",
+    // Child collaboration uses CLI/HTTP; do not inherit server registrations.
+    "--strict-mcp-config",
     "--mcp-config",
-    JSON.stringify({ mcpServers: { hamlet: o.innerTools } }),
+    '{"mcpServers":{}}',
   ];
   if ("sessionId" in o) args.push("--resume", o.sessionId);
   else args.push("--append-system-prompt", o.systemPrompt);

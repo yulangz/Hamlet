@@ -5,8 +5,6 @@ for (const name of [
   "harness-codex",
   "harness-claude",
   "daemon",
-  "mcp-host",
-  "mcp-inner",
   "cli",
 ]) {
   await build({

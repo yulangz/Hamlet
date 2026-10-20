@@ -217,7 +217,7 @@ export class Observer {
         matchesTime(m.created_at, p)
       );
     });
-    // Keep the existing unpaged HTTP API; the host MCP supplies a bounded limit.
+    // Preserve unpaged HTTP queries; callers can explicitly request a bounded page.
     const selected =
       p.limit === undefined && p.offset === undefined && p.order === undefined
         ? rows

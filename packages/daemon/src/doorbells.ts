@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { join } from "node:path";
-import { Service, now } from "../../core/src/index.js";
+import { Service, now, childEnvironment } from "../../core/src/index.js";
 export class Doorbells {
   children = new Map<string, ChildProcess>();
   timers = new Map<string, NodeJS.Timeout>();
@@ -80,8 +80,7 @@ export class Doorbells {
       detached: true,
       stdio: ["ignore", fd, fd],
       env: {
-        ...process.env,
-        ...l.extra_env,
+        ...childEnvironment(l.extra_env),
         PATH: `${this.binDir}:${l.extra_env.PATH || process.env.PATH}`,
         DOORBELL_AGENT_ID: id,
         DOORBELL_GROUP_ID: l.group_id,

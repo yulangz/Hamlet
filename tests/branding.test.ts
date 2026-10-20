@@ -11,8 +11,10 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
+  childEnvironment,
   dataDir,
   runtimeEnv,
   workdirMetadataDir,
@@ -27,8 +29,6 @@ import {
 import { codexArgs } from "../packages/harness-codex/src/index.js";
 import { claudeArgs } from "../packages/harness-claude/src/index.js";
 import { createDaemon } from "../packages/daemon/src/index.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Controlled } from "./helpers.js";
 
 test("Hamlet 默认目录及变量优先级；旧数据目录直接复用而不新建空数据库", () => {
@@ -80,26 +80,19 @@ test("新 workdir 使用 .hamlet；已有 .detached 标记与实例基准原地�
   }
 });
 
-test("harness 注入 hamlet 内置工具；禁用 Codex 项目遗留 detached namespace，避免重复连接", () => {
+test("harness 默认不注入 MCP 或凭据；旧 CLI 仍为同一入口", () => {
   const o = {
     cwd: "/tmp",
     systemPrompt: "system",
     prompt: "prompt",
     env: {},
-    innerTools: {
-      command: "/node",
-      args: ["/inner"],
-      env: instanceEnvironment("http://127.0.0.1:1", "token", "abcdef-1"),
-    },
   };
   const args = codexArgs(o);
-  assert.ok(args.includes("mcp_servers.detached.enabled=false"));
-  assert.ok(args.includes("mcp_servers.hamlet.enabled=true"));
-  assert.ok(args.some((x) => x.startsWith("mcp_servers.hamlet.env=")));
+  assert.ok(!args.some((x) => x.includes("mcp_servers")));
   const claude = claudeArgs(o);
   const config = JSON.parse(claude[claude.indexOf("--mcp-config") + 1]);
-  assert.ok(config.mcpServers.hamlet);
-  assert.equal(config.mcpServers.detached, undefined);
+  assert.deepEqual(config, { mcpServers: {} });
+  assert.ok(claude.includes("--strict-mcp-config"));
   const primary = execFileSync(
       process.execPath,
       [resolve("bin/hamlet.js"), "--help"],
@@ -118,7 +111,7 @@ test("harness 注入 hamlet 内置工具；禁用 Codex 项目遗留 detached na
 test("新旧认证环境与 cookie 均可连接同一个 Hamlet daemon", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hamlet-brand-auth-"));
   const d = await createDaemon({ dir, harnesses: { codex: new Controlled() } });
-  const clients: Client[] = [];
+  const exec = promisify(execFile);
   try {
     const url = await d.listen();
     const health = (await (await fetch(url + "/health")).json()) as any;
@@ -134,32 +127,25 @@ test("新旧认证环境与 cookie 均可连接同一个 Hamlet daemon", async (
     });
     assert.match(login.headers.get("set-cookie")!, /^hamlet=/);
     for (const prefix of ["HAMLET", "DETACHED"]) {
-      const env: Record<string, string> = Object.fromEntries(
-        Object.entries(process.env).filter(
-          ([k, v]) =>
-            !!v && !k.startsWith("HAMLET_") && !k.startsWith("DETACHED_"),
-        ),
-      ) as any;
-      env[`${prefix}_URL`] = url;
-      env[`${prefix}_TOKEN`] = d.service.auth.ownerToken;
-      const c = new Client({ name: "hamlet-brand-check", version: "1" });
-      clients.push(c);
-      await c.connect(
-        new StdioClientTransport({
-          command: process.execPath,
-          args: [resolve("packages/mcp-host/dist/index.js")],
-          env,
-        }),
-      );
-      assert.equal(c.getServerVersion()?.name, "hamlet-host");
-      assert.ok(
-        (await c.listTools()).tools.some((t) => t.name === "message_list"),
-      );
-      const groups = await c.callTool({ name: "group_list", arguments: {} });
-      assert.ok(!groups.isError);
+      const env = {
+        ...childEnvironment(),
+        [`${prefix}_URL`]: url,
+        [`${prefix}_TOKEN`]: d.service.auth.ownerToken,
+      };
+      const cli = async (name: string) =>
+        JSON.parse(
+          (
+            await exec(
+              process.execPath,
+              [resolve("bin/hamlet.js"), "call", name, "{}"],
+              { env },
+            )
+          ).stdout,
+        );
+      assert.equal((await cli("whoami")).identity, "owner");
+      assert.deepEqual(await cli("group_list"), []);
     }
   } finally {
-    for (const c of clients) await c.close();
     await d.close();
     rmSync(dir, { recursive: true, force: true });
   }

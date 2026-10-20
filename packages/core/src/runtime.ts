@@ -36,3 +36,19 @@ export function instanceEnvironment(url: string, token: string, id: string) {
     DETACHED_INSTANCE_ID: id,
   };
 }
+
+// Do not leak the launching host's Owner/instance/doorbell credentials into
+// children. The daemon supplies the child's own identity after this step.
+export function childEnvironment(
+  extra: NodeJS.ProcessEnv = {},
+  inherited: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env = { ...inherited, ...extra };
+  for (const key of Object.keys(env))
+    if (
+      /^(HAMLET|DETACHED)_(URL|TOKEN|INSTANCE_ID|RUN_ID)$/.test(key) ||
+      /^DOORBELL_/.test(key)
+    )
+      delete env[key];
+  return env;
+}
