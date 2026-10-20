@@ -30,6 +30,18 @@ corepack pnpm check
 
 ## 可选的真实 Codex 验证
 
+先验证真实 CLI 的配置解析（无需登录，不消耗模型额度，也不启动 MCP）：
+
+```bash
+HAMLET_CODEX_CONFIG_TEST_BIN=codex corepack pnpm exec tsx --test tests/codex-config.test.ts
+```
+
+该测试在隔离的 `CODEX_HOME` 和受信任项目目录中，覆盖 fork/resume、用户/项目配置及两种 `harness_options` 写法下，缺失、不完整、已有 stdio、已有 HTTP 的旧 `detached` 条目。验证旧条目被禁用、`hamlet` 工具及身份环境正确、其他 MCP 保留且原配置文件未被修改。未设置变量时，常规测试会明确跳过这一项。
+
+Codex harness 每次启动前执行一次只读的 `codex mcp list --json` 配置检查（最多 5 秒）。已有传输时只禁用旧条目；只有 CLI 明确报告 `mcp_servers.detached` 缺失传输时，才为禁用条目补入不携带内置工具参数或身份的 stdio 占位配置。这样避免无条件补 `command` 与已有 HTTP `url` 冲突。其他检查错误仍由正常 `exec` 路径报告。
+
+再按需进行会调用模型的完整 smoke 验证：
+
 ```bash
 node scripts/smoke-codex.mjs
 ```
