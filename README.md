@@ -56,6 +56,8 @@ node bin/hamlet.js skill install --path "$HOME/.claude/skills/hamlet"
 
 目标必须是明确的绝对路径；已存在时命令拒绝覆盖，更新前自行检查本地修改。重新加载宿主的 skills 后，可直接要求使用 Hamlet 或显式调用 `$hamlet`。也可在宿主会话中直接读取仓库中的 SKILL.md。构建及安装 Skill 不启动 daemon，不需注册 MCP server。
 
+**先选服务，再创建 Agent。** Skill 不内置服务地址：用户提供或明确选定现有服务 URL 和凭据来源，或明确授权 Owner 现场启动；后者以 `start` 返回的实际 URL 为准。连接已有服务时绑定 URL/凭据，失败就报告，不通过 CLI 的自动启动另起服务。启动授权、动态端口和本机发现规则见 [Skill](skills/hamlet/SKILL.md#先确定服务与启动授权)。
+
 子 Agent 每回合收到 Skill 路径与 CLI 使用说明；harness 通过环境提供实例 URL/令牌、CLI 和 Skill 路径，身份不写入 prompt 或 MCP 配置。子 Agent 使用 `"$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'` 确认自己，随后通过 CLI/HTTP 工作。daemon 每次重新判定权限；实例凭据不完整时 CLI 报错，不能静默回退本机 Owner。
 
 **创建前必须明确每项配置。** 调用 Agent 从当前请求及已有明确授权提取配置；没有明确值、明确不适用或用户授权默认的参数，先解释影响并合并询问，收到答案前不创建 group/Agent、不初始化/迁移目录、不启动服务或脚本。尤其不能自行选择 fork/resident、worktree、模型、权限或目录。完整配置已明确后直接执行，不增加重复确认。详见 [配置清单](skills/hamlet/references/configuration.md)。HTTP/CLI 为兼容旧客户端仍保留服务端默认值，这不表示 Skill 可以静默使用它们。

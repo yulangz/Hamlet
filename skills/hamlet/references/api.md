@@ -11,6 +11,12 @@ node /absolute/Hamlet/bin/hamlet.js status  # 不启动 daemon
 node /absolute/Hamlet/bin/hamlet.js start   # 明确授权启动后
 ```
 
+Skill 的连接前提是：**用户提供或明确选定现有服务 URL 与凭据来源，或明确授权 Owner 现场启动。** 没有这两者之一时先询问，不能用业务调用顺便启动服务。文中的 `call`、`ring`、`ui` 示例均以服务已选定、连接已绑定为前提。
+
+连接现有服务时，通过环境成对提供 `HAMLET_URL` 与 `HAMLET_TOKEN`，或向选定 URL 发认证 HTTP 请求。凭据可来自用户已配置的环境，或用户授权使用的本机数据目录；使用后者时，先核对该目录 `daemon.json` 中的 URL 与用户选定的服务一致，在进程内读取和使用凭据，不打印密钥或令牌。不要把令牌字面量写入命令参数、Skill、prompt 或共享记录。指定连接认证失败或不可达时停止并报告，不清除变量后改连本机 Owner，也不另起服务。
+
+用户授权本机启动后，在获授权的数据目录（`HAMLET_HOME`，或用户允许的默认目录）执行 `start`；返回的 `url` 才是本次实际服务地址，告知用户并用于后续调用。`start` 是“发现或启动”：同一目录已有健康 daemon 时会复用；如需全新服务，先明确独立数据目录。服务重启后重新读取地址，不能把示例端口、上次地址或安装目录当作当前连接配置。只有获授权的本机连接才可读取该目录的 `daemon.json` 解析或核对地址；发现文件不构成使用服务或启动服务的许可。
+
 本地状态目录默认 ~/.hamlet（仅有旧 ~/.detached 时复用旧目录），HAMLET_HOME 指定目录；daemon.json 含 url/pid。daemon 只监听 127.0.0.1 随机端口。Owner CLI 从该目录的 0600 secret 派生凭据，不需显示 token。显式 HAMLET_URL/HAMLET_TOKEN 成对设置时，CLI 连接该服务；子 Agent 已由 daemon 设置实例身份，不能读取 secret 或删除这些变量回退 Owner。DETACHED_* 是兼容别名，HAMLET_* 优先。daemon 保留身份变量，extra_env 中的 HAMLET/DETACHED URL/TOKEN/INSTANCE_ID/RUN_ID 和 DOORBELL_* 不会覆盖子 Agent 的身份。DOORBELL_URL/TOKEN 只能 ring 自己，不可查询工具。
 
 CLI `call` 自动发现或启动服务；`status` 仅查健康，不证明凭据有效，用 `call whoami '{}'` 验证权限。`start` 返回 `{url,status:"running"}`；`status` 返回健康 JSON 或 `{status:"stopped"}`。`stop` 仅 Owner，影响全部坊；服务安装/卸载用 `install-service`/`uninstall-service`（Linux/macOS）。

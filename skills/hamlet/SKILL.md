@@ -7,9 +7,20 @@ description: 使用 Hamlet 管理后台 Codex/Claude Agent、坊（group）、�
 
 Hamlet daemon 持久化 group、逻辑 Agent、实例、消息和运行。宿主与子 Agent 都使用 CLI/HTTP，无需注册 MCP。先读 [配置与系统模型](references/configuration.md)；调用时按需读 [API](references/api.md)，并行协作读 [事件驱动示例](references/collaboration.md)。
 
+## 先确定服务与启动授权
+
+Skill 不保存固定服务地址、端口或凭据。本节的服务选择面向宿主 Owner；子 Agent 直接沿用 daemon 注入的受限连接，不重新选择或启动服务。Owner 使用 Hamlet 前，从当前请求或已有明确授权中确定一种连接方式：
+
+- **连接现有服务**：由用户提供或明确选定服务 URL，以及凭据来源（已配置的环境或已授权的本机数据目录）。只有 URL 不代表已有访问权限；缺少连接信息时先询问，不自行选择本机服务。
+- **Owner 现场启动**：用户明确授权 Owner 启动本机服务后，按已授权的数据目录或用户允许的默认目录执行 `hamlet start`，读取返回的实际 `url` 并告知用户。端口动态分配，不猜测或沿用旧端口。`start` 可能复用同一数据目录下的现有 daemon；用户要求全新服务时，使用获授权的独立数据目录。
+
+记录服务选择、地址来源、凭据来源和启动授权，不记录凭据值。缺项与其他必要配置合并询问，已有明确授权不重复确认。仅连接或启动 daemon 时，无需填写 Agent 的模型、目录和运行模式。
+
+连接现有服务时，把用户选定的 URL 与相应凭据成对绑定到 `HAMLET_URL` / `HAMLET_TOKEN`，或用认证 HTTP 请求；这样连接失败会报错，不会自动另起本机服务。不得用未绑定连接的 `call`、`ring` 或 `ui` 探测服务，因为它们可能自动启动 daemon。`daemon.json` 仅用于解析或核对已获授权的本机连接，不是选择服务或启动服务的授权。连接步骤见 [API：服务连接](references/api.md#安装发现启动)。
+
 ## 创建前：先明确配置
 
-任何 group/Agent 创建、初始化、迁移、启动前，整理配置表：**参数、明确值或不适用原因、来源（本次请求/此前明确授权/用户明确授权的默认值）**。不得把用户未提及当作授权，也不得静默借用服务端默认值。该表应包含以下全部项目；条件参数也必须明确适用性：
+创建、初始化、迁移或启动 group/Agent 前，整理配置表：**参数、明确值或不适用原因、来源（本次请求/此前明确授权/用户明确授权的默认值）**。不得把用户未提及当作授权，也不得静默借用服务端默认值。该表应包含以下全部项目；条件参数也必须明确适用性：
 
 - group（新建时名称、复用时 ID）、role_name、identity（admin/worker）、职责及权限。
 - harness、model、harness_options（包括思考强度或明确空对象）、run_mode（fork/resident）。
@@ -23,7 +34,7 @@ Hamlet daemon 持久化 group、逻辑 Agent、实例、消息和运行。宿主
 
 ## 连接与身份
 
-- 宿主先定位安装目录，用 `node /absolute/Hamlet/bin/hamlet.js`；可用 `hamlet skill path` 查询 Skill 路径。只在用户授权的启动策略下 `hamlet start`。`call` 会自动发现/启动本机 daemon，也算启动副作用。
+- 宿主先定位安装目录，用 `node /absolute/Hamlet/bin/hamlet.js`；可用 `hamlet skill path` 查询 Skill 路径。安装位置不决定服务 URL，所有操作沿用上面已选定的连接。
 - 子 Agent 先读取 `$HAMLET_SKILL_DIR/SKILL.md`，使用 `"$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'` 确认身份。daemon 通过环境提供 HAMLET_URL/HAMLET_TOKEN、实例 ID；不要读取/替换本机 Owner 凭据、清除身份环境或给子 Agent 传 Owner token。不得将 token 写进 prompt、命令参数、共享记录或日志。HTTP 从环境读取 Authorization，勿用会打印请求头的诊断。
 - Owner 管理所有坊；admin 管理本坊 worker；worker 在本坊查询与通信。权限由 daemon 每次判断，CLI 不提升身份。权限边界不是文件系统沙箱；子进程仍可访问宿主用户可访问的文件。
 - 任何命令失败先看退出码和 `{error,details}`，不要换 Owner 身份重试。凭据不完整时 CLI 拒绝回退 Owner。
