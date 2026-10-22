@@ -37,6 +37,7 @@ export class Service extends EventEmitter {
   auth: Auth;
   observer: Observer;
   url = "";
+  uiUrl = "";
   stopping = false;
   active = new Map<
     string,
@@ -521,7 +522,9 @@ export class Service extends EventEmitter {
       }
       case "ui_open":
         this.owner(a);
-        return { url: `${this.url}/?token=${this.auth.ownerToken}` };
+        return {
+          url: `${this.uiUrl || this.url}/?token=${this.auth.ownerToken}`,
+        };
       case "state": {
         this.owner(a);
         return {

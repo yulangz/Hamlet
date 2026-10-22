@@ -168,9 +168,26 @@ def check():
 
 stdout/stderr 写入 `doorbells/<短ID>/output.log`，UI 实时查看。崩溃重启从 1 秒退避到最多 60 秒；10 分钟内第 6 次崩溃标记 failed，人工启动/重启可复位。停 daemon 保留 enabled 状态，下次启动恢复脚本。脚本令牌只能 ring 所属逻辑 Agent 及其实例。
 
+## 通过映射 URL 登录 Web
+
+平台端口映射或反向代理使用独立域名时，在 **daemon 启动前**设置公开根地址：
+
+```bash
+export HAMLET_PUBLIC_URL="https://hamlet.example.com"
+node bin/hamlet.js start
+node bin/hamlet.js ui
+```
+
+`ui` 会输出该公开地址下的带令牌登录链接；登录后换成 Cookie，并跳转到同一域名的 `/`。地址不写入 Skill。正在运行的 daemon 需使用原启动方式、原端口和同一数据目录重启后才会读取新配置；仅在 `ui` 命令前设置变量不会修改现有 daemon。
+
+- 仅允许配置地址的精确 Host 与 Origin，包括非默认端口；其他域名、端口和跨源请求继续被拒绝。反向代理可保留公开 Host，也可改写为 loopback Host，但应保留浏览器的 Origin。
+- 所有业务请求仍需 Owner/实例凭据；公开登录链接只接受 Owner。HTTPS 公开地址的登录 Cookie 额外设置 `Secure`，HTTP 地址仍可使用。
+- daemon 仍只监听 `127.0.0.1`，内部 CLI/Agent 连接和 `daemon.json` 仍使用本机地址；此配置不改变监听端口。映射端口需与实际启动端口对应，代理需转发路径、查询参数、Cookie 和 SSE，并关闭 SSE 缓冲。
+- 当前支持独立域名的根路径，不支持 `/proxy/端口/` 等路径前缀；`HAMLET_PUBLIC_URL` 不接受账号密码、查询参数或片段。
+
 ## HTTP 与状态
 
-认证：`Authorization: Bearer <token>`。本机 Owner 凭据由权限为 600 的 `secret` 派生，本机 Owner CLI 自动读取；子 Agent 使用受限实例环境，不读取 Owner secret。UI 使用带随机密钥签发令牌的首次访问 URL，随即换成 HttpOnly / SameSite=Strict cookie 并清除 URL 查询参数。拒绝跨源请求和非本机 Host。身份权限作用于工具层；不做文件系统隔离。
+认证：`Authorization: Bearer <token>`。本机 Owner 凭据由权限为 600 的 `secret` 派生，本机 Owner CLI 自动读取；子 Agent 使用受限实例环境，不读取 Owner secret。UI 使用带随机密钥签发令牌的首次访问 URL，随即换成 HttpOnly / SameSite=Strict cookie 并清除 URL 查询参数。拒绝未获准的跨源请求和 Host；配置 `HAMLET_PUBLIC_URL` 后仅额外允许该公开入口。身份权限作用于工具层；不做文件系统隔离。
 
 - `POST /api/ring`：`target`、`group?`、`prompt?`、`system_prompt?`、`vars?`、`dedup_key?`、`dedup_window?`。
 - `POST /api/tools/<工具名>`：JSON 参数。UI 的扩展操作还包括 `group_update`、`state`、`message_list/retry/cancel`、`run_events`、`doorbell_script_get/save`、`instance_diff/merge`、`workdir_refresh`、`branch_delete`、`instance_fork`。

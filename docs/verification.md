@@ -20,6 +20,7 @@ corepack pnpm check
 | --------------------------- | ------------------------------------------------------------------------------------------------ |
 | `tests/core.test.ts`        | 身份与权限、模板和快照、fork/resident、FIFO 与 direct 目录串行、去重、Git/non-Git 工作目录及合并 |
 | `tests/integration.test.ts` | HTTP/SSE、认证、真实 CLI 子进程、Codex/Claude harness 契约、CLI/HTTP 调用与权限、doorbell 脚本  |
+| `tests/public-url.test.ts` | 公开 HTTP/HTTPS 地址、平台 Host 改写、Cookie 登录与 API、Host/Origin 白名单、无效配置和后台 CLI 的公开入口 |
 | `tests/lifecycle.test.ts`   | 并发启动、宿主退出后 daemon 存活、硬崩溃恢复、遗留子进程和脚本恢复                               |
 | `tests/observation.test.ts` | 排队原因、消息来源、Owner 查询及分页、历史快照、旧库迁移和损坏日志尾行                           |
 | `tests/branding.test.ts`    | Hamlet 命名、新旧 CLI/环境变量/数据目录/工作目录标记及认证兼容                                   |
