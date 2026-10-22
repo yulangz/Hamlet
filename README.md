@@ -45,33 +45,32 @@ node bin/hamlet.js uninstall-service
 
 ## 一键安装并启动
 
-在要启用 Skill 的项目根目录执行。需要 Node.js、npm、Git、Python 3，以及本仓库的 SSH 访问权限：
+在要启用 Skill 的项目根目录，使用已有源码中的脚本。需要 Node.js、npm、Git、Python 3：
 
 ```bash
-git clone --depth 1 git@github.com:yulangz/Hamlet.git Hamlet
-HAMLET_PORT=34883 bash Hamlet/scripts/hamlet-install.sh
+HAMLET_PORT=34883 bash ./Hamlet/scripts/hamlet-install.sh
 ```
 
-已有最新版源码时，直接执行第二行。脚本安装依赖、构建、后台启动服务，再将完整 Skill 安装到**启动脚本时所在目录**的 `.agents/skills/hamlet/`，最后输出 Web 登录链接。已有 Skill 会保留，不覆盖本地修改；安装位置与脚本文件位置、源码位置相互独立。
+脚本相对自身位置通过 `scripts/..` 定位源码，直接使用当前这份代码，不克隆或拉取仓库，也不要求源码包含 `.git`。若当前目录就是 Hamlet 仓库根目录，使用 `bash ./scripts/hamlet-install.sh`。
+
+脚本安装依赖、构建、后台启动服务，再将完整 Skill 安装到**启动脚本时所在目录**的 `.agents/skills/hamlet/`，最后输出 Web 登录链接。已有 Skill 会保留，不覆盖本地修改；源码位置不决定 Skill 的安装位置。
 
 | 环境变量 | 默认值 / 行为 |
 | --- | --- |
 | `HAMLET_PORT` | 新安装必须指定；已有运行服务时可省略并沿用原本机端口 |
-| `HAMLET_DIR` | 启动目录下的 `Hamlet/`，用于克隆、更新和构建源码；可指定独立安装目录 |
 | `HAMLET_HOME` | `~/.hamlet/`，保存数据库、凭据和日志 |
 | `HAMLET_PUBLIC_URL` | 不设置时使用本机 Web 地址；设置为映射 URL 后生成对应的登录入口 |
 | `HAMLET_RESTART` | 默认复用已有服务；设为 `1` 时停止并重启该数据目录的服务，保留数据 |
 
-例如，源码放在项目外，同时启用公开 URL 并重启已有服务：
+例如，启用公开 URL 并重启已有服务：
 
 ```bash
-HAMLET_DIR="$HOME/.local/share/hamlet" \
 HAMLET_PUBLIC_URL="https://hamlet.example.com" \
 HAMLET_RESTART=1 \
-bash Hamlet/scripts/hamlet-install.sh
+bash ./Hamlet/scripts/hamlet-install.sh
 ```
 
-此时沿用原本机端口，Skill 仍安装到当前项目。服务已停止或首次启动时，需再提供 `HAMLET_PORT`；运行中的其他端口服务不会被自动替换。源码目录若是 Git checkout，脚本先执行 `git pull --ff-only`；普通源码副本则直接构建，不会自动从其他仓库更新。
+此时沿用原本机端口，Skill 仍安装到当前项目。服务已停止或首次启动时，需再提供 `HAMLET_PORT`；运行中的其他端口服务不会被自动替换。脚本不更新源码，版本更新由调用方自行完成。
 
 ## 安装 Hamlet Skill
 

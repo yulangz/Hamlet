@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# Run from the project where Codex should discover the Skill:
-# New install: HAMLET_PORT=34883 bash hamlet-install.sh
+# Run from the project where Codex should discover the Skill.
+# Source is resolved relative to this script, not the working directory.
+# New install: HAMLET_PORT=34883 bash ./Hamlet/scripts/hamlet-install.sh
 # Update/restart with existing data and port:
-# HAMLET_RESTART=1 HAMLET_PUBLIC_URL=https://your-host bash hamlet-install.sh
+# HAMLET_RESTART=1 HAMLET_PUBLIC_URL=https://your-host bash ./Hamlet/scripts/hamlet-install.sh
 set -euo pipefail
 project="$PWD"
-repo="${HAMLET_DIR:-$project/Hamlet}"
-if [ ! -d "$repo" ]; then
-  mkdir -p "$(dirname "$repo")"
-  git clone --depth 1 git@github.com:yulangz/Hamlet.git "$repo"
-elif [ -e "$repo/.git" ]; then
-  git -C "$repo" pull --ff-only
-fi
-cd "$repo"
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 npx --yes pnpm@10.28.2 install --frozen-lockfile
 npx --yes pnpm@10.28.2 build
 export HAMLET_HOME="${HAMLET_HOME:-$HOME/.hamlet}"
