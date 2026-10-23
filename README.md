@@ -8,7 +8,7 @@ Hamlet 是英语里的“小村落”。中文名“坊”取自唐代长安的�
 
 在 Hamlet 里，每个 **group 是一座坊**。坊内的 Agent 各自独立干活，有事敲门（`doorbell`）唤醒，彼此串门（`message_to`）协作，但不越过坊墙。坊墙对应工具权限与通信边界，文件系统与工作目录由使用者安排。
 
-Hamlet 通过 **Skill + CLI/HTTP** 为宿主提供单机后台 Agent 执行能力，宿主与子 Agent 都无需配置 MCP。独立 daemon 负责持久化消息、拉起运行、维护权限与记录；宿主会话结束，坊里的工作仍可继续。当前支持 Codex 与 Claude Code，并附带 CLI、Web UI 和 Python doorbell 库。
+Hamlet 通过 **Skill + CLI/HTTP** 为宿主提供单机后台 Agent 执行能力。独立 daemon 负责持久化消息、拉起运行、维护权限与记录；宿主会话结束，坊里的工作仍可继续。当前支持 Codex 与 Claude Code，并附带 CLI、Web UI 和 Python doorbell 库。
 
 ## 几个简单约定
 
@@ -83,17 +83,17 @@ node bin/hamlet.js skill install --path "${CODEX_HOME:-$HOME/.codex}/skills/haml
 node bin/hamlet.js skill install --path "$HOME/.claude/skills/hamlet"
 ```
 
-目标必须是明确的绝对路径；已存在时命令拒绝覆盖，更新前自行检查本地修改。重新加载宿主的 skills 后，可直接要求使用 Hamlet 或显式调用 `$hamlet`。也可在宿主会话中直接读取仓库中的 SKILL.md。构建及安装 Skill 不启动 daemon，不需注册 MCP server。
+目标必须是明确的绝对路径；已存在时命令拒绝覆盖，更新前自行检查本地修改。重新加载宿主的 skills 后，可直接要求使用 Hamlet 或显式调用 `$hamlet`。也可在宿主会话中直接读取仓库中的 SKILL.md。构建及安装 Skill 不启动 daemon。
 
-**先选服务，再创建 Agent。** Skill 不内置服务地址：用户提供或明确选定现有服务 URL 和凭据来源，或明确授权 Owner 现场启动；后者以 `start` 返回的实际 URL 为准。连接已有服务时绑定 URL/凭据，失败就报告，不通过 CLI 的自动启动另起服务。启动授权、动态端口和本机发现规则见 [Skill](skills/hamlet/SKILL.md#先确定服务与启动授权)。
+**先选服务，再创建 Agent。** 沿用用户选定的服务和凭据；获得启动授权后才启动本机服务，以返回的 URL 为准。连接已有服务时绑定 URL/凭据，避免 CLI 自动另起服务。Owner 和后台 Agent 的连接步骤见 [Skill](skills/hamlet/SKILL.md)。
 
-子 Agent 每回合收到 Skill 路径与 CLI 使用说明；harness 通过环境提供实例 URL/令牌、CLI 和 Skill 路径，身份不写入 prompt 或 MCP 配置。子 Agent 使用 `"$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'` 确认自己，随后通过 CLI/HTTP 工作。daemon 每次重新判定权限；实例凭据不完整时 CLI 报错，不能静默回退本机 Owner。
+后台 Agent 每回合收到 `[Hamlet runtime]`，其中包含真实身份、Skill 路径和消息路由规则；凭据通过环境注入。使用 `"$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'` 核对身份。
 
-**创建前必须明确每项配置。** 调用 Agent 从当前请求及已有明确授权提取配置；没有明确值、明确不适用或用户授权默认的参数，先解释影响并合并询问，收到答案前不创建 group/Agent、不初始化/迁移目录、不启动服务或脚本。尤其不能自行选择 fork/resident、worktree、模型、权限或目录。完整配置已明确后直接执行，不增加重复确认。详见 [配置清单](skills/hamlet/references/configuration.md)。HTTP/CLI 为兼容旧客户端仍保留服务端默认值，这不表示 Skill 可以静默使用它们。
+创建时确定职责、模型、会话模式、权限、目录、资源和启动时机，沿用已有选择，说明常规实现决定，仅对影响任务且无法确定的缺项提问。迁移已有目录需有授权。“仅创建”不发送任务，并关闭 doorbell。配置与 prompt 的覆盖、生效规则见 [配置说明](skills/hamlet/references/configuration.md)。
 
 ## 建一座坊，开始一次运行
 
-以下仅演示**用户已授权完整配置**后的请求：一个 worker，Codex 指定模型/high 强度、resident、指定独立 direct 目录、无 GPU/额外环境、空模板、不开 doorbell、创建后发送一次任务；git_init/base_ref/migrate 因 direct 而明确不适用。实际请求必须使用用户的值，缺项先询问。
+以下演示一个已授权任务的请求：一个 worker，Codex 指定模型/high 强度、resident、指定独立 direct 目录、无 GPU/额外环境、空模板、不开 doorbell、创建后发送一次任务；git_init/base_ref/migrate 因 direct 而明确不适用。按实际任务替换示例值。
 
 ```bash
 node bin/hamlet.js call group_create '{"name":"用户指定的开发坊"}'
@@ -228,7 +228,7 @@ SQLite 使用 WAL。标准化事件在 `runs/<run_id>.jsonl`，原始事件在�
 
 ## 子 Agent 命令环境
 
-Hamlet 提供 Skill、CLI 与 HTTP 入口，不再提供 MCP server，也不探测或迁移旧 MCP 配置。Codex fork/resume 直接生成 CLI 参数；启动模型前使用相同参数中的配置启动本地 app-server，通过 command/exec 核对命令环境中的受限身份和 CLI/Skill 路径。若这些变量被过滤或替换，或检查不可用/超时，就拒绝启动，不回退 Owner、不放宽用户环境策略。探针不调用模型，令牌仅走环境，不写入参数、prompt 或日志。Claude 使用 strict 空 server 集合，子 Agent 都通过 CLI/HTTP 工作。
+Codex fork/resume 直接生成 CLI 参数；启动模型前使用相同参数中的配置启动本地 app-server，通过 command/exec 核对命令环境中的受限身份和 CLI/Skill 路径。若这些变量被过滤或替换，或检查不可用/超时，就拒绝启动，不回退 Owner、不放宽用户环境策略。探针不调用模型，令牌仅走环境，不写入参数、prompt 或日志。子 Agent 通过 CLI/HTTP 使用 Hamlet。
 
 已有实例继续沿用模型/模板等配置快照，每回合收到 CLI/Skill 提示和环境；如需更新任务配置，按既有规则换新实例。
 

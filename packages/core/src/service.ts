@@ -895,12 +895,23 @@ export class Service extends EventEmitter {
     const prompt = m.prompt ?? render(config.prompt_tpl, vars);
     const system = fresh
       ? (m.system_prompt ?? render(config.system_prompt_tpl, vars)) +
-        (w.shared_path
-          ? `\n共享知识目录: ${w.shared_path}。可在此读写并沉淀组内知识。`
-          : "")
+        (w.shared_path ? `\n共享目录: ${w.shared_path}` : "")
       : "";
     const sender = senderInfo(m);
-    const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}\n\n[Hamlet runtime]\nUse CLI/HTTP with your existing instance identity. Before Hamlet operations read the Skill at ${JSON.stringify(join(this.skillDir, "SKILL.md"))}. CLI: "$HAMLET_NODE" "$HAMLET_CLI" call whoami '{}'. Never print credentials, read Owner secrets, or change authentication environment. HAMLET_URL/HAMLET_TOKEN are provided only via environment. Every message triggers execution immediately; no self-message polling.`;
+    const runtime = [
+      "[Hamlet runtime]",
+      `Identity: logical_id=${l.id}; instance_id=${id}.`,
+      `Before using Hamlet, read ${JSON.stringify(join(this.skillDir, "SKILL.md"))}.`,
+      `CLI: "$HAMLET_NODE" "$HAMLET_CLI" call <tool> '<JSON>'; whoami '{}' verifies your instance identity.`,
+      "Use the injected HAMLET_URL/HAMLET_TOKEN. Keep credentials out of prompts, command arguments and logs; do not read Owner secrets or replace your identity.",
+      "message_to has no mode parameter: logical short ID + run_mode=fork creates a new session; real instance long ID resumes that session in either mode; resident logical ID creates or reuses its resident session.",
+      "For existing-task follow-ups and results, use the recorded working_instance_id or reply_to_instance_id. Do not guess instance IDs.",
+      sender.kind === "instance"
+        ? `Sender instance: ${m.from_id}; default reply target for this message unless the task specifies another reply_to_instance_id.`
+        : "Sender is not an Agent instance; no implicit instance reply target.",
+      "Each message queues one turn; it cannot interrupt a running turn. Write progress to shared state, notify on results or blockers, and end the turn when waiting. No ACK replies or self-message polling.",
+    ].join("\n");
+    const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}\n\n${runtime}`;
     if (fresh) {
       i = {
         id,
