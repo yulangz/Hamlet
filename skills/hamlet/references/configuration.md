@@ -34,7 +34,7 @@ Agent 由消息触发执行。启用 doorbell 会启动事件脚本，脚本也�
 
 每个实例保留创建时的配置快照。更新逻辑 Agent 的模型、模板、参数和环境只影响新实例；resume 使用原快照，包括原 prompt_tpl。补充当前任务用消息 prompt；需要新长期配置时创建新实例。`instance_renew_resident` 会归档旧常驻实例，下一次逻辑触发才创建新会话。
 
-Hamlet 每回合将来源头、任务正文、`[Hamlet runtime]` 依次组成任务 prompt。runtime 提供身份、skill 路径、路由和队列规则；它由服务端生成，无单独配置字段。新实例的 system prompt 还会附上共享目录路径（如有）。Codex 将其作为 developer_instructions，Claude 使用 append-system-prompt。实际内容可在 run_get 的 prompt/system_prompt 或运行记录中查看。
+Hamlet 每回合发送来源头与任务正文；当前身份为 admin 时，附加一句按需查阅 Agent skill 的提示。角色职责在创建配置中填写，路由与队列规则由工具定义提供。新实例的 system prompt 还会附上共享目录路径（如有）。Codex 将其作为 developer_instructions，Claude 使用 append-system-prompt。实际内容可在 run_get 的 prompt/system_prompt 或运行记录中查看。
 
 Owner 使用 hamlet skill，后台实例使用自动安装的 hamlet-agent skill；daemon 不给 Owner 注入运行时 prompt。group 没有独立 prompt 字段。admin/worker 定义系统权限，业务职责由用户配置。建议在 system_prompt_tpl 写目标、职责边界、交付标准和交接方式，在每次消息中写任务版本、输入与输出路径；不必复制 runtime 和本 skill。
 

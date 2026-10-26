@@ -35,7 +35,7 @@ for (const mode of ["direct", "git", "plain"]) {
         readFileSync(join(local, "SKILL.md"), "utf8"),
         readFileSync("skills/hamlet-agent/SKILL.md", "utf8"),
       );
-      assert.ok(o.prompt.includes(join(local, "SKILL.md")));
+      assert.ok(!o.prompt.includes(join(local, "SKILL.md")));
       const cli = await promisify(execFile)(
         "bash",
         [join(local, "scripts/hamlet"), "--help"],
@@ -107,29 +107,49 @@ test("Generated skill in a repository subdirectory is excluded from Git changes"
   }
 });
 
-test("runtime states the current admin/worker identity even when resuming a snapshot", async () => {
+test("only admins receive the skill pointer, using live identity on resume", async () => {
   const f = await fixture();
   try {
-    const a = await f.agent({ worktree: false, identity: "worker" });
-    f.s.ring(OWNER, { target: a.id });
+    const a = await f.agent({
+      worktree: false,
+      identity: "worker",
+      system_prompt_tpl: "You review mathematical proofs.",
+    });
+    f.s.ring(OWNER, { target: a.id, prompt: "Review lemma 1." });
     f.s.tick();
     await until(() => f.h.calls.length === 1);
-    assert.match(
+    assert.equal(
       f.h.calls[0].options.prompt,
-      /You are a Hamlet Agent\. Your identity is worker\./,
+      "[来自 ring 调用方 (owner)]\nReview lemma 1.",
     );
-    assert.ok(!f.h.calls[0].options.prompt.includes("CLI:"));
+    assert.equal(
+      (f.h.calls[0].options as any).systemPrompt,
+      "You review mathematical proofs.",
+    );
     f.h.calls[0].finish();
     await until(() => f.s.active.size === 0);
     await f.s.call("agent_update", { id: a.id, identity: "admin" }, OWNER);
-    f.s.ring(OWNER, { target: `${a.id}-1` });
+    f.s.ring(OWNER, { target: `${a.id}-1`, prompt: "Review lemma 2." });
     f.s.tick();
     await until(() => f.h.calls.length === 2);
     assert.equal(f.h.calls[1].kind, "resume");
-    assert.ok(f.h.calls[1].options.prompt.includes("CLI:"));
-    assert.match(
-      f.h.calls[1].options.prompt,
-      /You are a Hamlet Agent\. Your identity is admin\./,
+    const prompt = f.h.calls[1].options.prompt;
+    assert.ok(
+      prompt.includes(
+        join(agentSkillPath(a.workdir.root, "codex"), "SKILL.md"),
+      ),
+    );
+    assert.ok(!prompt.includes("HAMLET_TOKEN"));
+    assert.ok(!prompt.includes("message_to"));
+    f.h.calls[1].finish();
+    await until(() => f.s.active.size === 0);
+    await f.s.call("agent_update", { id: a.id, identity: "worker" }, OWNER);
+    f.s.ring(OWNER, { target: `${a.id}-1`, prompt: "Review lemma 3." });
+    f.s.tick();
+    await until(() => f.h.calls.length === 3);
+    assert.equal(
+      f.h.calls[2].options.prompt,
+      "[来自 ring 调用方 (owner)]\nReview lemma 3.",
     );
   } finally {
     await f.close();

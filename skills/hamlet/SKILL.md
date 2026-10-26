@@ -31,6 +31,8 @@ bash "$hamlet_cli" --help
 
 创建前，向用户展示方案：group、Agent 数量与任务分工、admin/worker 身份、模型、会话模式、目录、资源和触发方式。询问是否确认按此方案创建，以及是否要给某个 Agent 发送首条消息触发执行，并说明拟发送的目标和任务内容。已有明确确认直接沿用；按确认的方案创建和派发。配置及目录迁移语义见 [配置](references/configuration.md)。
 
+在创建方案中同时写好各 Agent 的职责草稿和首条任务：system_prompt_tpl 描述长期目标、职责边界、交付标准与协作关系；消息 prompt 描述本次输入、行动和验收。可从 [角色与任务模板](references/role-prompts.md) 填写，删除不适用项，不将服务、凭据或工具用法复制到角色 prompt。prompt_tpl 只用于确有默认任务的场景，可留空。
+
 以下命令展示创建与派发流程，实际参数以确认的方案为准。
 
 1. 创建 group，或用 group_list 查询并复用已有组。
@@ -54,7 +56,7 @@ bash "$hamlet_cli" call agent_create --stdin <<'JSON'
 JSON
 ```
 
-Hamlet 会自动安装后台 Agent skill：Codex 使用工作目录中的 `.agents/skills/hamlet-agent`，Claude 使用 `.claude/skills/hamlet-agent`；创建实际 worktree 时也会安装。runtime 提供其路径与 CLI 环境。无需给后台 Agent 复制这份 Owner 指南。
+Hamlet 会自动安装后台 Agent skill：Codex 使用工作目录中的 `.agents/skills/hamlet-agent`，Claude 使用 `.claude/skills/hamlet-agent`；创建实际 worktree 时也会安装。admin 每回合会收到按需阅读该 skill 的提示；CLI 环境由服务提供。无需给后台 Agent 复制这份 Owner 指南。
 
 3. 若确认的方案包含首次派发，将目标的逻辑 id 填入 AGENT_ID，发送约定任务。
 

@@ -133,7 +133,7 @@ test("Codex 命令环境检查允许超过七秒的冷启动并保留身份校�
 });
 
 for (const harness of ["codex", "claude"]) {
-  test(`${harness} 无 MCP 子进程通过 CLI 验证实例身份、同组消息、拒绝 Owner/提权/跨坊，fork/resume`, async () => {
+  test(`${harness} 子进程通过 CLI 验证实例身份、同组消息、拒绝 Owner/提权/跨坊，fork/resume`, async () => {
     const dir = mkdtempSync(join(tmpdir(), `hamlet-cli-${harness}-`));
     const harnesses = {
       [harness]:
@@ -229,7 +229,10 @@ for (const harness of ["codex", "claude"]) {
         const run = s.store
           .all("runs")
           .find((r) => r.instance_id === `${a.id}-1`)!;
-        assert.ok(run.prompt.includes("[Hamlet runtime]"));
+        assert.equal(
+          run.prompt.includes("需要查询或管理同组 Agent"),
+          identity === "admin",
+        );
         assert.ok(!run.prompt.includes(s.auth.ownerToken));
         assert.ok(
           !readFileSync(run.events_path, "utf8").includes(s.auth.ownerToken),

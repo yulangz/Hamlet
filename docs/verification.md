@@ -82,3 +82,5 @@ HAMLET_CODEX_TOOLS_TEST_BIN="$(command -v codex)" corepack pnpm exec tsx --test 
 ```
 
 `docs/agent-prompt-index.md` 是本次审阅的完整文案快照，包含源码位置和生效时机；它不会加载到 Agent。修改 runtime、skill 或工具描述后，审阅时应以相应源文件为准。
+
+消息状态机审查与边界说明见 [message-lifecycle.md](message-lifecycle.md)。`tests/message-lifecycle.test.ts` 覆盖发送者去重隔离、重试积压检查、拒绝取消、实际路由、派发快照、归档/删除竞态、常驻启动失败、重启恢复、group 删除期间的并发请求与停止终态。

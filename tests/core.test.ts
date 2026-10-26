@@ -91,9 +91,10 @@ test("message_to 提示真实回复地址，Worker 用长 ID 返回同一 Leader
       .all("instances")
       .find((i) => i.logical_id === worker.id)!;
     const guidance = f.h.calls[1].options.prompt;
-    assert.ok(guidance.includes(`logical_id=${worker.id}`));
-    assert.ok(guidance.includes(`instance_id=${workerInstance.id}`));
-    assert.ok(guidance.includes(`Sender instance: ${leaderInstance.id}`));
+    assert.equal(
+      guidance,
+      `[来自 Leader#1 (${leaderInstance.id})]\nassigned work`,
+    );
     assert.ok(!guidance.includes(f.s.auth.ownerToken));
     const result = await f.s.call(
       "message_to",
@@ -183,10 +184,7 @@ test("缺模板变量不创建实例；显式空 prompt 与 system prompt 分别
     f.s.ring(OWNER, { target: l.id, prompt: "", system_prompt: "" });
     f.s.tick();
     await until(() => f.h.calls.length === 1);
-    assert.match(
-      f.h.calls[0].options.prompt,
-      /ring 调用方 \(owner\)\]\n\n\n\[Hamlet runtime\]/,
-    );
+    assert.equal(f.h.calls[0].options.prompt, "[来自 ring 调用方 (owner)]\n");
     assert.throws(() => render("{{toString}}", {}), /缺少/);
   } finally {
     await f.close();
@@ -227,7 +225,7 @@ test("prompt 模板使用真实内置身份，显式消息保持原文且替代�
     const second = f.s.store.all("runs").at(-1)!;
     assert.equal(second.system_prompt, "覆盖 {{missing}}");
     assert.ok(second.prompt.includes("原文 {{missing}}"));
-    assert.equal(second.prompt.split("[Hamlet runtime]").length, 2);
+    assert.equal(second.prompt, "[来自 ring 调用方 (owner)]\n原文 {{missing}}");
     assert.notEqual(second.instance_id, first.instance_id);
   } finally {
     await f.close();

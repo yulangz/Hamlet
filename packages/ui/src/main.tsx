@@ -1078,7 +1078,7 @@ function App() {
                               确认推送
                             </button>
                           )}
-                          {m.status === "queued" && (
+                          {["queued", "rejected"].includes(m.status) && (
                             <button
                               onClick={() =>
                                 void act(() =>

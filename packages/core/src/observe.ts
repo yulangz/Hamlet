@@ -102,8 +102,8 @@ export class Observer {
       concurrency: direct ? "serial_workdir" : "parallel_instances",
       message_delivery: "queued_turn",
       description: direct
-        ? "此 direct 目录由所有使用它的 Agent 全局串行执行；本轮结束才会释放目录。message_to 只入队，不会打断正在运行的回合；共用目录的其他实例在本轮结束后才能执行。"
-        : "不同实例可并行；同一实例按 FIFO 逐条执行。每条被接受的消息都会触发一次运行，不会实时插入正在执行的回合。",
+        ? "共用此 direct 工作目录的实例串行执行。"
+        : "不同实例可并行；同一实例串行执行。",
       shared_with: direct
         ? this.store
             .all("logical_agents")

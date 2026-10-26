@@ -13,7 +13,7 @@
 | message_list | {from_id?,target?,status?,limit?,offset?,order?} | 查询本组消息，包括 rejected 记录 |
 | message_force_push | {id} | 确认推送自己发送的 rejected 消息 |
 
-message_to 的 prompt 替代目标实例默认任务模板；省略时渲染 prompt_tpl。system_prompt 仅在新会话替代 system_prompt_tpl，resume 会忽略。直接传入的文本不做模板替换，vars 只用于模板。dedup_window 支持 24h、7d 等时长。角色名解析为逻辑节点，角色名#序号解析为真实实例；使用已记录的 ID 可明确路由。
+message_to 的 prompt 替代目标实例默认任务模板；省略时渲染 prompt_tpl。system_prompt 仅在新会话替代 system_prompt_tpl，resume 会忽略。直接传入的文本不做模板替换，vars 只用于模板。dedup_window 支持 24h、7d 等时长。去重按发送者、目标和键隔离。角色名解析为逻辑节点，角色名#序号解析为真实实例；使用已记录的 ID 可明确路由。
 
 成功返回 JSON；CLI 失败退出码 1，stderr 为 {error,details}，HTTP 使用对应状态码。积压拒绝返回 409：details 包含 code=target_queue_overloaded、message_id、target_id、queued_count、threshold=5、status=rejected 和 confirmation 调用参数。强推成功返回原消息，其状态变为 queued；重复强推返回 409，未知 ID 返回 404，强推其他发送者的消息返回 403（跨组目标不可见）。
 

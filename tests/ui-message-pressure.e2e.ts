@@ -50,6 +50,21 @@ test("Owner sees rejected message and confirms exactly one push", async ({
     ).toHaveCount(0);
     await expect.poll(() => s.store.get("messages", id)!.status).toBe("queued");
     expect(s.store.all("messages")).toHaveLength(7);
+    let discarded = "";
+    try {
+      s.ring(OWNER, { target: a.id, prompt: "discard me" });
+    } catch (e: any) {
+      discarded = e.details.message_id;
+    }
+    expect(discarded).not.toBe("");
+    const row = page.getByRole("row").filter({ hasText: "discard me" });
+    await row.getByRole("button", { name: "取消", exact: true }).click();
+    await expect
+      .poll(() => s.store.get("messages", discarded)!.status)
+      .toBe("cancelled");
+    await expect(
+      row.getByRole("button", { name: "确认推送", exact: true }),
+    ).toHaveCount(0);
   } finally {
     await d.close();
     rmSync(dir, { recursive: true, force: true });

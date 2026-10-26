@@ -87,6 +87,8 @@ Hamlet 为每个子实例注册 `message_to` 和 `message_force_push` 模型工�
 - system_prompt_tpl 定义新实例职责；prompt_tpl 是默认任务，消息 prompt 可覆盖。已有实例保留配置快照，更新逻辑配置影响新实例。
 - doorbell 是检测外部事件并发送消息的独立脚本。GPU 配额、作业调度和任务验收由协作方案或外部系统负责。
 
+角色与任务草稿可从 [角色模板](skills/hamlet/references/role-prompts.md) 填写；消息状态与恢复规则见 [队列状态机](docs/message-lifecycle.md)，模型可见文案见 [prompt 索引](docs/agent-prompt-index.md)。
+
 完整选项见 [配置](skills/hamlet/references/configuration.md)，工具参数、认证和错误见 [API](skills/hamlet/references/api.md)，Leader/Worker 交接见 [协作示例](skills/hamlet/references/collaboration.md)。
 
 ## 开发

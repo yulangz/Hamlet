@@ -130,7 +130,7 @@ CLI 错误退出码为 1，stderr 与 HTTP 错误正文均为 `{error,details}`�
 
 调用方确认继续时执行 `message_force_push {"id":"拒绝 ID"}`。服务只将原消息加入队尾，保留发送者、目标及内容；拒绝数量和强推者/时间保存在 rejection 中。未知 ID 返回 404；非 rejected（包括已推送）返回 409；其他发送实例调用返回 403，跨组目标仍不可见。Owner 可强推所有拒绝消息，doorbell 凭据不能调用该工具。目标已删除或实例已归档时仍拒绝推送。
 
-相同 target/dedup_key 在窗口内命中 rejected 消息时，再次返回同一拒绝 ID。队列缩短或 daemon 重启不会自动接纳 rejected 消息；它不能通过 message_retry 入队。强推并发或重复调用只有第一次成功，之后报错。
+同一发送者的相同 target/dedup_key 在窗口内命中 rejected 消息时，再次返回同一拒绝 ID。队列缩短或 daemon 重启不会自动接纳 rejected 消息；它不能通过 message_retry 入队，可以用 message_cancel 放弃。message_retry 同样检查目标队列积压，超过阈值时将原消息改为 rejected 并返回其 ID。强推并发或重复调用只有第一次成功，之后报错。
 
 ## 消息、运行与去重
 
@@ -138,6 +138,6 @@ message 状态 queued/dispatched/done/failed/cancelled/rejected；run 状态 run
 
 message_get 的 runs 保留重试历史；run_get 的 prompt 是实际投递内容，final_output/usage/error 为结果。触发来源 host/ui/ring/message_to/doorbell_script；Owner 来源不证明用户亲自输入。trigger_is_snapshot=false 时不能推断未保存的触发数据。since/until 是 ISO 时间，消息按 created_at、运行按 started_at；order=asc/desc。显式 limit 1–500、offset≥0；HTTP/CLI 不传分页时部分接口返回全量，建议明确分页。查询不会启动模型回合。
 
-去重范围是 target_id + dedup_key，在 dedup_window（如 24h、7d）内返回旧消息并标 deduplicated=true；不同实例/逻辑目标不是同一范围，不同发送者共用目标也共享键空间。缺 key 不去重。不要用相同键表示修改后的任务；新 version 用新键。重试/崩溃不提供 exactly-once；业务结果写入和消费仍需任务版本/已处理记录。
+去重范围是 from_id + target_id + dedup_key，在 dedup_window（如 24h、7d）内返回旧消息并标 deduplicated=true；不同实例/逻辑目标不是同一范围，不同发送者的键空间相互独立。缺 key 不去重。不要用相同键表示修改后的任务；新 version 用新键。重试/崩溃不提供 exactly-once；业务结果写入和消费仍需任务版本/已处理记录。
 
 daemon 重启把正在运行的 run 标 interrupted、对应消息 failed，不自动重放；queued 继续调度。先查询失败记录和输出，再决定是否重试，不能把入队响应当结果。
