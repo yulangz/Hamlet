@@ -21,6 +21,7 @@ import {
   type RunHandle,
 } from "./types.js";
 import * as wd from "./workdirs.js";
+import { agentSkillPath, installAgentSkill } from "./skills.js";
 import {
   instanceEnvironment,
   workdirMetadataDir,
@@ -49,7 +50,7 @@ export class Service extends EventEmitter {
     public dir: string,
     public harnesses: Record<string, Harness>,
     public cliPath: string,
-    public skillDir = join(dirname(cliPath), "../skills/hamlet"),
+    public skillDir = join(dirname(cliPath), "../skills/hamlet-agent"),
   ) {
     super();
     this.store = new Store(dir);
@@ -209,7 +210,10 @@ export class Service extends EventEmitter {
             m.dedup_key === p.dedup_key &&
             m.dedup_until > now(),
         );
-      if (old) return { ...this.observer.message(old, a), deduplicated: true };
+      if (old) {
+        if (old.status === "rejected") this.rejectMessage(old);
+        return { ...this.observer.message(old, a), deduplicated: true };
+      }
     }
     const c = this.context(a),
       from =
@@ -218,6 +222,23 @@ export class Service extends EventEmitter {
           : a.kind === "doorbell"
             ? `doorbell: ${l.role_name}`
             : `${c.role_name}#${this.store.get("instances", a.id)!.seq}`;
+    const queue = this.pressureQueue({
+      target_id: target,
+      force_fork: !!p.force_fork,
+    });
+    const queuedCount = queue
+      ? this.queuedMessages().filter((m) => this.pressureQueue(m) === queue)
+          .length
+      : 0;
+    const rejected = queuedCount > 5;
+    const rejection = rejected
+      ? {
+          code: "target_queue_overloaded",
+          queued_count: queuedCount,
+          threshold: 5,
+          rejected_at: now(),
+        }
+      : null;
     const m = {
       id: randomUUID(),
       target_id: target,
@@ -229,16 +250,88 @@ export class Service extends EventEmitter {
       vars: p.vars || {},
       dedup_key: p.dedup_key || null,
       dedup_until: new Date(Date.now() + window).toISOString(),
-      status: "queued",
+      status: rejected ? "rejected" : "queued",
+      rejection,
+      error: rejected
+        ? `目标 Agent 已有 ${queuedCount} 条排队消息，本次消息已拒绝。是否确认继续推送？`
+        : null,
       created_at: now(),
-      queued_at: now(),
+      queued_at: rejected ? null : now(),
+      queue_seq: rejected ? null : this.nextQueueSeq(),
       force_fork: !!p.force_fork,
     };
     this.store.insert("messages", m);
     if (a.kind === "doorbell")
       this.store.update("doorbells", a.id, { last_ring_at: now() });
     this.changed();
+    if (rejected) this.rejectMessage(m);
     return this.observer.message(m, a);
+  }
+  private pressureQueue(m: Row): string | null {
+    try {
+      const { l, i } = this.route(m);
+      if (i) return `instance:${i.id}`;
+      // Before first dispatch, resident messages share the future session queue.
+      if (l.run_mode === "resident" && !m.force_fork) return `resident:${l.id}`;
+      return null; // A fork logical target creates a separate session per message.
+    } catch {
+      return null; // Invalid queued targets are handled by the scheduler.
+    }
+  }
+  private nextQueueSeq(): number {
+    return (
+      this.store.db
+        .prepare("SELECT COALESCE(MAX(queue_seq),0)+1 AS n FROM messages")
+        .get() as { n: number }
+    ).n;
+  }
+  private queuedMessages() {
+    return this.store
+      .all("messages")
+      .filter((m) => m.status === "queued")
+      .sort((a, b) => a.queue_seq - b.queue_seq);
+  }
+  private rejectMessage(m: Row): never {
+    throw new AppError(m.error, 409, {
+      ...m.rejection,
+      message_id: m.id,
+      target_id: m.target_id,
+      status: "rejected",
+      confirmation: { tool: "message_force_push", params: { id: m.id } },
+    });
+  }
+  private forcePush(p: Row, a: Actor) {
+    this.context(a);
+    if (typeof p.id !== "string" || !p.id)
+      throw new AppError("id 必须是被拒绝消息的 ID");
+    const m = this.store.get("messages", p.id);
+    if (!m) throw new AppError("消息不存在", 404);
+    const t = this.resolve(m.target_id, a);
+    if (
+      a.kind !== "owner" &&
+      (m.from_id !== a.id || senderInfo(m).kind !== "instance")
+    )
+      throw new AppError("只能强推自己被拒绝的消息", 403);
+    if (m.status !== "rejected")
+      throw new AppError(
+        "只能强推被拒绝的消息；此消息已推送或不是 rejected 状态",
+        409,
+      );
+    if (t.instance?.archived_at) throw new AppError("目标实例已归档", 409);
+    // No await between checking status and updating: concurrent calls cannot enqueue twice.
+    this.store.update("messages", m.id, {
+      status: "queued",
+      error: null,
+      queued_at: now(),
+      queue_seq: this.nextQueueSeq(),
+      rejection: {
+        ...m.rejection,
+        forced_at: now(),
+        forced_by: a.kind === "owner" ? "owner" : a.id,
+      },
+    });
+    this.changed();
+    return this.observer.message(this.store.get("messages", m.id)!, a);
   }
   async call(name: string, p: Row, a: Actor): Promise<any> {
     if (a.kind === "doorbell") throw new AppError("无权限", 403);
@@ -340,8 +433,7 @@ export class Service extends EventEmitter {
             a,
             i.config_snapshot.workdir,
           ),
-          pending_messages: this.store
-            .all("messages")
+          pending_messages: this.queuedMessages()
             .filter(
               (m) =>
                 m.status === "queued" &&
@@ -383,6 +475,8 @@ export class Service extends EventEmitter {
       }
       case "message_to":
         return this.ring(a, p, a.kind === "owner" ? "host" : "message_to");
+      case "message_force_push":
+        return this.forcePush(p, a);
       case "message_list":
         return this.observer.messages(p, a);
       case "message_get":
@@ -413,7 +507,9 @@ export class Service extends EventEmitter {
           error: null,
           run_id: null,
           resolved_instance_id: null,
-          ...(name === "message_retry" ? { queued_at: now() } : {}),
+          ...(name === "message_retry"
+            ? { queued_at: now(), queue_seq: this.nextQueueSeq() }
+            : {}),
         });
         this.changed();
         return { ok: true };
@@ -605,6 +701,13 @@ export class Service extends EventEmitter {
       w = wd.setupWorkdir(p);
       this.store.insert("workdirs", w);
     }
+    installAgentSkill(
+      this.skillDir,
+      w.mode === "direct" ? w.root : w.main_path,
+      cfg.harness,
+    );
+    if (w.mode === "plain")
+      installAgentSkill(this.skillDir, w.base_path, cfg.harness);
     const id = short(6);
     const l = {
       id,
@@ -675,6 +778,21 @@ export class Service extends EventEmitter {
       }
       changes.workdir_id = w.id;
     }
+    const workdir = this.store.get(
+      "workdirs",
+      changes.workdir_id || l.workdir_id,
+    )!;
+    installAgentSkill(
+      this.skillDir,
+      workdir.mode === "direct" ? workdir.root : workdir.main_path,
+      changes.harness || l.harness,
+    );
+    if (workdir.mode === "plain")
+      installAgentSkill(
+        this.skillDir,
+        workdir.base_path,
+        changes.harness || l.harness,
+      );
     this.store.update("logical_agents", l.id, {
       ...changes,
       updated_at: now(),
@@ -744,9 +862,7 @@ export class Service extends EventEmitter {
   }
   tick() {
     if (this.stopping) return;
-    for (const m of this.store
-      .all("messages")
-      .filter((m) => m.status === "queued")) {
+    for (const m of this.queuedMessages()) {
       try {
         this.dispatch(m);
       } catch (e) {
@@ -824,7 +940,7 @@ export class Service extends EventEmitter {
             },
           };
       }
-    for (const earlier of this.store.all("messages")) {
+    for (const earlier of this.queuedMessages()) {
       if (earlier.id === m.id) break;
       if (earlier.status !== "queued") continue;
       try {
@@ -900,16 +1016,22 @@ export class Service extends EventEmitter {
     const sender = senderInfo(m);
     const runtime = [
       "[Hamlet runtime]",
+      `You are a Hamlet Agent. Your identity is ${l.identity}.`,
+      "Hamlet Agent identities are admin and worker: both can query and communicate within their group; admin can also manage workers in that group. Task roles are assigned by the user.",
       `Identity: logical_id=${l.id}; instance_id=${id}.`,
-      `Before using Hamlet, read ${JSON.stringify(join(this.skillDir, "SKILL.md"))}.`,
-      `CLI: "$HAMLET_NODE" "$HAMLET_CLI" call <tool> '<JSON>'; whoami '{}' verifies your instance identity.`,
+      `Before using Hamlet, read ${JSON.stringify(join(agentSkillPath(path, config.harness), "SKILL.md"))}.`,
+      ...(l.identity === "admin"
+        ? [
+            `CLI: "$HAMLET_NODE" "$HAMLET_CLI" call <tool> '<JSON>'; whoami '{}' verifies your instance identity.`,
+          ]
+        : []),
       "Use the injected HAMLET_URL/HAMLET_TOKEN. Keep credentials out of prompts, command arguments and logs; do not read Owner secrets or replace your identity.",
       "message_to has no mode parameter: logical short ID + run_mode=fork creates a new session; real instance long ID resumes that session in either mode; resident logical ID creates or reuses its resident session.",
       "For existing-task follow-ups and results, use the recorded working_instance_id or reply_to_instance_id. Do not guess instance IDs.",
       sender.kind === "instance"
         ? `Sender instance: ${m.from_id}; default reply target for this message unless the task specifies another reply_to_instance_id.`
         : "Sender is not an Agent instance; no implicit instance reply target.",
-      "Each message queues one turn; it cannot interrupt a running turn. Write progress to shared state, notify on results or blockers, and end the turn when waiting. No ACK replies or self-message polling.",
+      "Each accepted message queues one execution turn, including messages to yourself. It will not interrupt a running turn. If submission is rejected for queue pressure, the error includes a message_id and reason; message_force_push {id: message_id} confirms that rejected message.",
     ].join("\n");
     const actual = `[来自 ${sender.label}${sender.kind === "owner" ? " (owner)" : sender.kind === "doorbell" ? "" : ` (${m.from_id})`}]\n${prompt}\n\n${runtime}`;
     if (fresh) {
@@ -1040,6 +1162,11 @@ export class Service extends EventEmitter {
         throw new AppError("运行已终止");
       if (!fresh && !i.harness_session_id)
         throw new AppError("harness 会话不可用，请换新实例");
+      const localSkill = installAgentSkill(
+        this.skillDir,
+        i.worktree_path,
+        config.harness,
+      );
       const token = this.auth.sign({ kind: "instance", id: i.id }),
         innerEnv = instanceEnvironment(this.url, token, i.id);
       const opts = {
@@ -1052,8 +1179,12 @@ export class Service extends EventEmitter {
           ...childEnvironment(config.extra_env, {}),
           ...innerEnv,
           HAMLET_CLI: this.cliPath,
+          HAMLET_AGENT_TOOLS: join(
+            dirname(this.cliPath),
+            "hamlet-agent-tools.js",
+          ),
           HAMLET_NODE: process.execPath,
-          HAMLET_SKILL_DIR: this.skillDir,
+          HAMLET_SKILL_DIR: localSkill,
           HAMLET_RUN_ID: run.id,
           DETACHED_RUN_ID: run.id,
         },

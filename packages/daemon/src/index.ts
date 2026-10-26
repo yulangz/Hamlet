@@ -67,7 +67,7 @@ export async function createDaemon(
       claude: new ClaudeHarness(),
     },
     options.cliPath || join(root, "bin/hamlet.js"),
-    options.skillDir || join(root, "skills/hamlet"),
+    options.skillDir || join(root, "skills/hamlet-agent"),
   );
   service.uiUrl = publicUrl?.origin || "";
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });

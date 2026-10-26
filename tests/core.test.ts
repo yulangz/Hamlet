@@ -490,7 +490,12 @@ test("重启恢复：running 标 interrupted、消息不重放，queued 继续�
     f.s.store.update("instances", l.id + "-1", { status: "running" });
     f.s.store.close();
     const h = new Controlled();
-    recovered = new Service(join(f.dir, "data"), { codex: h }, "/inner.js");
+    recovered = new Service(
+      join(f.dir, "data"),
+      { codex: h },
+      "/inner.js",
+      process.cwd() + "/skills/hamlet-agent",
+    );
     recovered.start();
     assert.equal(recovered.store.get("runs", r.id)?.status, "interrupted");
     assert.equal(recovered.store.get("messages", m.id)?.status, "failed");

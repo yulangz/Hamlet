@@ -38,6 +38,12 @@ test("Skill 安装到显式目录，完整复制引用并拒绝覆盖", async ()
       readFileSync("skills/hamlet/SKILL.md", "utf8"),
     );
     assert.ok(existsSync(join(target, "references/api.md")));
+    const launched = await exec(
+      "bash",
+      [join(target, "scripts/hamlet"), "--help"],
+      { cwd: dir },
+    );
+    assert.match(launched.stdout, /hamlet call/);
     await assert.rejects(
       exec(process.execPath, [cli, "skill", "install", "--path", target]),
       /目标已存在/,

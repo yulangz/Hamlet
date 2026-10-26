@@ -2,15 +2,15 @@
 
 ## 服务连接
 
-构建、安装及服务管理见仓库 README。以下调用以连接已选定、认证已配置为前提。
+构建、安装及服务管理见仓库 README。以下调用以连接已选定、认证已配置为前提。下文的 hamlet 可替换为 `bash "$hamlet_cli"`，hamlet_cli 按主 skill 定位 scripts/hamlet。
 
 - Owner 连接已有服务：成对设置 HAMLET_URL/HAMLET_TOKEN。凭据来自已配置环境或授权数据目录；从本机目录读取时核对 daemon.json 的 URL，令牌仅在进程内使用。
 - Owner 启动本机服务：在授权的 HAMLET_HOME 执行 `hamlet start`。同目录已有健康服务时会复用；实际 URL 以返回值为准。`status` 不启动服务，`call`/`ring`/`ui` 在未绑定连接时可能自动启动。
 - 后台 Agent：直接使用注入的 HAMLET_URL/HAMLET_TOKEN、HAMLET_NODE/HAMLET_CLI 和 HAMLET_SKILL_DIR，不重新选择服务或读取本机 Owner secret。
 
-未安装命令到 PATH 时使用 `node /absolute/Hamlet/bin/hamlet.js`；`skill path` 查询源 skill，`skill install --path /absolute/target` 安装完整目录，目标已存在时拒绝覆盖。Owner 安装副本与后台 Agent 读取的源目录需分别更新。
+使用本 skill 的 `scripts/hamlet` 入口；`skill path` 查询源 skill，`skill install --path /absolute/target` 安装完整目录，目标已存在时拒绝覆盖。Owner 安装副本需随源码更新；后台 hamlet-agent skill 由服务安装到工作目录。
 
-本机状态目录由 HAMLET_HOME 指定，默认 ~/.hamlet；仅存在旧 ~/.detached 时兼容复用。daemon.json 保存 URL/PID，0600 secret 用于派生 Owner 凭据。服务绑定 127.0.0.1，实际端口读取启动结果。DETACHED_* 是兼容别名，HAMLET_* 优先。
+本机状态目录由 HAMLET_HOME 指定，默认 ~/.hamlet。daemon.json 保存 URL/PID，0600 secret 用于派生 Owner 凭据。服务绑定 127.0.0.1，实际端口读取启动结果。
 
 ## 调用格式与错误
 
@@ -52,7 +52,7 @@ with urllib.request.urlopen(req, timeout=30) as r:
   "harness_options":{"model_reasoning_effort":"high"},
   "run_mode":"fork", "workdir":"/absolute/research/r1", "worktree":false,
   "prompt_tpl":"处理任务 {{task}}；版本 {{version}}",
-  "system_prompt_tpl":"完成 Leader 分配的研究任务，按验收标准提交证据与结果；完成或阻塞时通知任务中指定的真实回复实例。",
+  "system_prompt_tpl":"完成分配的研究任务，按验收标准提交证据与结果；完成或阻塞时通知任务中指定的真实回复实例。",
   "extra_env":{}, "doorbell_script":"", "doorbell_enabled":false
 }
 ```
@@ -81,7 +81,8 @@ agent_create 返回 `{id,group_id,role_name,identity,harness,model,harness_optio
 | instance_fork | {logical_id,prompt?,vars?} | 入队消息；Owner，强制新实例 |
 | run_stop | {instance_id} | ok；Owner/admin，终止当前运行 |
 | message_to | {target,group?,prompt?,system_prompt?,vars?,dedup_key?,dedup_window?} | 入队消息；短 ID=fork 模式逻辑节点新建实例，长 ID=resume 指定实例；resident 逻辑节点按常驻规则处理；Owner/本坊实例 |
-| message_list | {group?,logical_id?,instance_id?,target?,source?,from_id?,status?,since?,until?,limit?,offset?,order?} | 消息数组；Owner |
+| message_force_push | {id} | 原拒绝消息入队；Owner 或原发送实例，仅 rejected 状态可用 |
+| message_list | {group?,logical_id?,instance_id?,target?,source?,from_id?,status?,since?,until?,limit?,offset?,order?} | 消息数组；Owner 或本组实例 |
 | message_get | {id} | 消息和所有运行尝试；Owner |
 | message_retry / message_cancel | {id} | ok；Owner；失败/已取消可重试，仅 queued 可取消 |
 | run_list | {group?,logical_id?,instance_id?,message_id?,source?,from_id?,status?,since?,until?,limit?,offset?,order?} | run 数组；Owner |
@@ -112,9 +113,28 @@ agent_create 返回 `{id,group_id,role_name,identity,harness,model,harness_optio
 
 回执中的 next_action / planned_instance_id 表示计划动作，非完成结果。去重命中或消息已派发时，这些字段可能缺省；保留消息 id，按需查询 message_get 或实例状态。
 
+### 积压拒绝与强制推送
+
+积压按目标真实实例统计；resident 的逻辑 ID 与常驻实例共用队列（首次创建前也如此）。fork 逻辑 ID 和 instance_fork 创建新会话，不汇总其他实例的积压。提交前该队列已有 > 5 条 queued 消息时，保存 rejected 记录并返回 HTTP 409；已有 5 条仍接受第六条。dispatched、rejected 和终态消息不计入。检查和写入在同一同步操作内完成。
+
+CLI 错误退出码为 1，stderr 与 HTTP 错误正文均为 `{error,details}`。error 说明“目标 Agent 已有 X 条排队消息，本次消息已拒绝。是否确认继续推送？”，details 包含：
+
+```json
+{
+  "code":"target_queue_overloaded", "message_id":"被拒绝消息的 ID",
+  "target_id":"解析后的目标 ID", "queued_count":6, "threshold":5,
+  "status":"rejected",
+  "confirmation":{"tool":"message_force_push","params":{"id":"被拒绝消息的 ID"}}
+}
+```
+
+调用方确认继续时执行 `message_force_push {"id":"拒绝 ID"}`。服务只将原消息加入队尾，保留发送者、目标及内容；拒绝数量和强推者/时间保存在 rejection 中。未知 ID 返回 404；非 rejected（包括已推送）返回 409；其他发送实例调用返回 403，跨组目标仍不可见。Owner 可强推所有拒绝消息，doorbell 凭据不能调用该工具。目标已删除或实例已归档时仍拒绝推送。
+
+相同 target/dedup_key 在窗口内命中 rejected 消息时，再次返回同一拒绝 ID。队列缩短或 daemon 重启不会自动接纳 rejected 消息；它不能通过 message_retry 入队。强推并发或重复调用只有第一次成功，之后报错。
+
 ## 消息、运行与去重
 
-message 状态 queued/dispatched/done/failed/cancelled；run 状态 running/succeeded/failed/stopped/interrupted。message_to 返回 id/status/queue_reason/next_action/sender 等；`queue_reason.code` 为 workdir_busy、instance_busy、group_paused、fifo、awaiting_dispatch 或 target_unavailable，可能带阻塞 run/实例。它是当前快照，不能承诺起跑时间。
+message 状态 queued/dispatched/done/failed/cancelled/rejected；run 状态 running/succeeded/failed/stopped/interrupted。message_to 返回 id/status/queue_reason/next_action/sender 等；`queue_reason.code` 为 workdir_busy、instance_busy、group_paused、fifo、awaiting_dispatch 或 target_unavailable，可能带阻塞 run/实例。它是当前快照，不能承诺起跑时间。
 
 message_get 的 runs 保留重试历史；run_get 的 prompt 是实际投递内容，final_output/usage/error 为结果。触发来源 host/ui/ring/message_to/doorbell_script；Owner 来源不证明用户亲自输入。trigger_is_snapshot=false 时不能推断未保存的触发数据。since/until 是 ISO 时间，消息按 created_at、运行按 started_at；order=asc/desc。显式 limit 1–500、offset≥0；HTTP/CLI 不传分页时部分接口返回全量，建议明确分页。查询不会启动模型回合。
 

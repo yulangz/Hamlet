@@ -6,7 +6,7 @@
 
 | 选项 | 含义与选择依据 |
 | --- | --- |
-| group、role_name | group 是通信和管理边界；名称描述职责，具体分工可由 Leader 派发 |
+| group、role_name | group 是通信和管理边界；role_name 描述用户指定的任务分工，不决定系统权限 |
 | identity | worker 在本组查询和通信；admin 可管理本组 worker。协调任务本身不要求 admin |
 | harness、model | codex 或 claude；保留用户指定模型。model:null 沿用该 CLI 的模型配置 |
 | harness_options | Codex 选项转为 `-c key=TOML`，如 model_reasoning_effort；Claude 当前读取 effort；无覆盖时用 `{}` |
@@ -16,7 +16,7 @@
 | extra_env、资源 | extra_env 值须为字符串，无附加环境时 `{}`；资源限额由任务约定或外部调度器执行 |
 | doorbell_script、doorbell_enabled | 外部事件脚本的绝对路径及启用状态；不用时 `""`、false |
 
-创建 Agent 不执行模型任务。启用 doorbell 可在创建时启动脚本；“仅创建”应关闭它。创建后是否发送首次任务，沿用用户指定的启动时机。
+Agent 由消息触发执行。启用 doorbell 会启动事件脚本，脚本也可发送消息；创建方案应明确是否启用该触发方式。
 
 ## prompt 的作用与覆盖规则
 
@@ -36,7 +36,7 @@
 
 Hamlet 每回合将来源头、任务正文、`[Hamlet runtime]` 依次组成任务 prompt。runtime 提供身份、skill 路径、路由和队列规则；它由服务端生成，无单独配置字段。新实例的 system prompt 还会附上共享目录路径（如有）。Codex 将其作为 developer_instructions，Claude 使用 append-system-prompt。实际内容可在 run_get 的 prompt/system_prompt 或运行记录中查看。
 
-Owner 的使用指导来自本 skill；daemon 不给 Owner 注入运行时 prompt。group 没有独立 prompt 字段，也没有内置 Leader/Worker 业务职责。建议在 system_prompt_tpl 写目标、职责边界、交付标准和交接方式，在每次消息中写任务版本、输入与输出路径；不必复制 runtime 和本 skill。
+Owner 使用 hamlet skill，后台实例使用自动安装的 hamlet-agent skill；daemon 不给 Owner 注入运行时 prompt。group 没有独立 prompt 字段。admin/worker 定义系统权限，业务职责由用户配置。建议在 system_prompt_tpl 写目标、职责边界、交付标准和交接方式，在每次消息中写任务版本、输入与输出路径；不必复制 runtime 和本 skill。
 
 ## 工作目录与并发
 
