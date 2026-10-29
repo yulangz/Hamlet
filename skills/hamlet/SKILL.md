@@ -20,7 +20,7 @@ bash "$hamlet_cli" --help
 
 若 skill 位于其他目录，用你读取本 SKILL.md 时的真实目录定位同目录下的 scripts/hamlet。直接读取源码中的 skill 时也使用它自带的脚本；源码搬动后重新安装宿主 skill 即可更新入口。
 
-连接方式沿用用户已有选择；用户尚未说明时，先询问使用已有服务还是在本机启动，再按选择连接：
+连接方式沿用用户已有选择；用户尚未说明时，询问使用已有服务还是在本机启动，可与下文的创建方案一起确认。连接确认只决定服务入口，不代表已确认 Agent 配置。
 
 - 已有服务：使用选定的 URL 和凭据来源，在环境中成对提供 HAMLET_URL/HAMLET_TOKEN；随后用 `bash "$hamlet_cli" call whoami '{}'` 验证 Owner 身份。
 - 本机启动：获得启动授权后，在选定的 HAMLET_HOME 执行 `bash "$hamlet_cli" start`，记录返回 URL，后续命令沿用该连接与数据目录。
@@ -29,7 +29,19 @@ bash "$hamlet_cli" --help
 
 ## 创建、派发、查看结果
 
-创建前，向用户展示方案：group、Agent 数量与任务分工、admin/worker 身份、模型、会话模式、目录、资源和触发方式。询问是否确认按此方案创建，以及是否要给某个 Agent 发送首条消息触发执行，并说明拟发送的目标和任务内容。已有明确确认直接沿用；按确认的方案创建和派发。配置及目录迁移语义见 [配置](references/configuration.md)。
+创建前，先整理用户已指定的配置，为缺失项提出具体建议，集中向用户确认整份方案。不要仅确认服务入口就创建 Agent，也不要静默使用示例参数或 CLI 默认值。用户已指定、已确认或明确授权你自行选择的项直接沿用，不重复询问。
+
+方案应列出以下实际选择；不同 Agent 配置相同时可以合并展示：
+
+| 项目 | 需要展示的选择 |
+| --- | --- |
+| 组织 | group、Agent 数量、任务分工、admin/worker 身份 |
+| 模型 | codex/claude、具体模型、推理强度或继承策略；`model:null` 必须说明为沿用服务端 CLI 配置，无法核实时说明实际模型尚未核实 |
+| 创建方式 | fork/resident，以及直接使用目录、接入已有独立 worktree、由 Hamlet 创建 worktree；会话模式与目录隔离分别选择 |
+| 目录与资源 | 绝对路径、适用的基准分支/提交、共享产物位置、所需资源与调度方式；涉及迁移时说明范围 |
+| 触发 | 首条任务的目标和内容；后续依赖由消息还是 doorbell 触发；何时停止或交回用户 |
+
+询问是否按该方案创建，以及是否立即触发哪些 Agent 或启用哪些 doorbell。用户只确认创建时，先保持 doorbell 禁用，首条消息和启用脚本分别按已有授权执行。配置及目录迁移语义见 [配置](references/configuration.md)。
 
 在创建方案中同时写好各 Agent 的职责草稿和首条任务：system_prompt_tpl 描述长期目标、职责边界、交付标准与协作关系；消息 prompt 描述本次输入、行动和验收。可从 [角色与任务模板](references/role-prompts.md) 填写，删除不适用项，不将服务、凭据或工具用法复制到角色 prompt。prompt_tpl 只用于确有默认任务的场景，可留空。
 
@@ -74,6 +86,20 @@ bash "$hamlet_cli" call run_events '{"id":"RUN_ID","limit":100,"order":"desc"}'
 
 入队回执不代表完成；成功结果在 run.final_output 及任务约定的文件中，失败原因在 error 中。查询不会触发执行。停止当前回合使用 `call run_stop '{"instance_id":"INSTANCE_ID"}'`；其余排队消息需单独取消。
 
+## 组织任务与 doorbell
+
+设计多阶段任务时，先写清每一步由什么事件触发、唤醒谁、从哪里读取状态。按依赖选择触发方式：
+
+| 场景 | 推荐方式 |
+| --- | --- |
+| 分配任务、Agent 完成后交接、需要另一 Agent 决策 | `message_to`，任务中明确交接对象与验收条件 |
+| 等待 Slurm/训练/评测作业、文件或外部服务状态变化、定时检查 | 优先配置 doorbell，用脚本检测事件，再发消息唤醒负责处理的 Agent |
+| 多个结果齐备才能进入下一阶段 | 少量直接通知由协调者汇总；需要持续检查就用 doorbell 检查结果清单并合并通知 |
+
+Doorbell 是服务托管的轻量脚本，不是模型 Agent；每次检查无需调用模型，满足触发条件时才排入一条消息。避免让模型回合长时间 sleep 或反复给自己发“检查进度”消息来承担持续监控。一次性任务无需为了使用 doorbell 增加监控。
+
+有外部等待或周期任务时，创建方案应包含 doorbell 的事件条件、检查间隔、绑定 Agent、唤醒目标、状态文件与停止条件。编写和本地验证脚本后再启用，并检查 `doorbell_logs`。具体配置、示例和权限见 [协作示例](references/collaboration.md#外部事件doorbell)。
+
 ## 消息与积压确认
 
 message_to 没有 mode 参数。fork 模式的逻辑短 ID 创建新会话；真实长 ID resume 指定会话；resident 模式的逻辑 ID 首次创建、随后复用常驻会话。同一任务追问或修复时，使用查询得到的真实 instance_id。
@@ -90,4 +116,4 @@ bash "$hamlet_cli" call message_force_push '{"id":"REJECTED_MESSAGE_ID"}'
 
 - 模板覆盖、配置快照、工作目录、资源：读 [配置](references/configuration.md)。
 - 参数、权限、去重、错误与管理操作：读 [API](references/api.md)。
-- 组织 Leader/Worker 与 doorbell：读 [协作示例](references/collaboration.md)。
+- 组织 Leader/Worker 的派发与交接：读 [协作示例](references/collaboration.md)。
