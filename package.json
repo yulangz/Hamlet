@@ -9,20 +9,14 @@
   },
   "bin": {
     "hamlet": "bin/hamlet.js",
-    "detached": "bin/detached.js",
     "doorbell": "bin/doorbell.js",
-    "doorbell-python": "packages/py-doorbell/bin/doorbell-python"
+    "detached": "bin/detached.js"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
-    "test:python": "python3 -m unittest discover -s tests -p '*_test.py'",
-    "start": "node packages/cli/dist/index.js start",
-    "ui:dev": "vite packages/ui --host 127.0.0.1",
-    "test:ui": "playwright test",
-    "format": "prettier --write packages/*/src scripts tests playwright.config.ts tsconfig.json package.json",
-    "check": "node scripts/check.mjs"
+    "start": "node bin/hamlet.js start",
+    "build": "node --check bin/hamlet.js && node --check bin/doorbell.js",
+    "test": "node --test tests/hamlet-entry.test.mjs",
+    "check": "npm run build && npm test"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
