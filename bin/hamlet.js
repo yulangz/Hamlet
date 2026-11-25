@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-import '../packages/cli/dist/index.js';
+import '../skills/hamlet/scripts/hamlet.mjs'

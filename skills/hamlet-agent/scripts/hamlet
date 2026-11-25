@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-exec "${HAMLET_NODE:?Hamlet runtime is required}" "${HAMLET_CLI:?Hamlet runtime is required}" "$@"
