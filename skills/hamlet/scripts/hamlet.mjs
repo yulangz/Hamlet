@@ -37,7 +37,7 @@ async function main() {
     if (!auth.ok) throw new Error('Hamlet Hub authentication failed')
     const { token } = await auth.json()
     const response = await fetch(url + '/api/hamlet/main', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ timezone: process.env.HAMLET_USER_TIMEZONE || undefined })
     })
     if (!response.ok) throw new Error(await response.text())
     console.log(url + '/sessions/' + (await response.json()).agent_id)

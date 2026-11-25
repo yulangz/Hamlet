@@ -27,14 +27,18 @@ test('owner opens the Hub session and a doorbell rings only its bound endpoint',
     const run = (name, args, env) => promisify(execFile)(process.execPath, [
         fileURLToPath(new URL('../bin/' + name, import.meta.url)), ...args
     ], { env: { ...process.env, ...env } })
-    const main = await run('hamlet.js', ['start'], { HAMLET_API_URL: url, CLI_API_TOKEN: 'owner-token' })
+    const owner = { HAMLET_API_URL: url, CLI_API_TOKEN: 'owner-token', TZ: 'UTC', HAMLET_USER_TIMEZONE: '' }
+    const main = await run('hamlet.js', ['start'], owner)
+    await run('hamlet.js', ['start'], { ...owner, HAMLET_USER_TIMEZONE: 'Asia/Shanghai' })
     assert.equal(main.stdout.trim(), url + '/sessions/main-id')
     await run('doorbell.js', ['ring', '--prompt', 'job finished', '--dedup-key', 'job-1'], {
         DOORBELL_URL: url + '/hamlet/ring', DOORBELL_TOKEN: 'bell-token'
     })
     assert.deepEqual(requests, [
         ['/api/auth', undefined, { accessToken: 'owner-token' }],
-        ['/api/hamlet/main', 'Bearer owner-jwt', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }],
+        ['/api/hamlet/main', 'Bearer owner-jwt', {}],
+        ['/api/auth', undefined, { accessToken: 'owner-token' }],
+        ['/api/hamlet/main', 'Bearer owner-jwt', { timezone: 'Asia/Shanghai' }],
         ['/hamlet/ring', 'Bearer bell-token', { prompt: 'job finished', dedup_key: 'job-1' }]
     ])
 })

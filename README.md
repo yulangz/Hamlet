@@ -8,10 +8,10 @@ Hamlet Hub 管理 Agent、群、消息和定时提醒。各台机器上的 Hamle
 node bin/hamlet.js start
 ```
 
-CLI 默认连接本机 3006 端口，支持 HAMLET_API_URL 和 CLI_API_TOKEN。重复调用打开同一主助理。父 Agent 使用会话里的 Hamlet MCP 工具创建和管理直属子节点。子 Agent 的 Codex 会话、工作目录以及调度记录由 Hub 与所在机器的 Runner 保存。
+CLI 默认连接本机 3006 端口，支持 HAMLET_API_URL 和 CLI_API_TOKEN。重复调用打开同一主助理，保留 Hub 已记录的时区。需要显式更新时可设置 HAMLET_USER_TIMEZONE，例如 Asia/Shanghai。运行中的 Agent 在下次启动时采用新时区。父 Agent 使用会话里的 Hamlet MCP 工具创建和管理直属子节点。子 Agent 的 Codex 会话、工作目录以及调度记录由 Hub 与所在机器的 Runner 保存。
 
 旧 daemon 的源码、文档、模板和测试保存在 [archive](archive/README.md)。旧数据目录可保留供查阅。新版不会自动导入旧会话、监听脚本或待处理消息。
 
-运行 `npm run check` 可验证本仓库的 主助理入口和 doorbell 命令。Hub、Runner、Web 和协作协议的构建及测试位于配套的 Hub 仓库。
+运行 `npm run check` 可验证本仓库的主助理入口和 doorbell 命令。Hub、Runner、Web 和协作协议的构建及测试位于配套的 Hub 仓库。
 
 Runner 随托管会话提供 hamlet-agent skill 和 doorbell Python SDK。监听脚本用 Python 的 `from doorbell import ring` 上报。此仓库的 `doorbell ring` 命令供有 DOORBELL_URL 和 DOORBELL_TOKEN 的环境手动调试。
