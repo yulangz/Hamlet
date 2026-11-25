@@ -34,7 +34,18 @@ test('owner opens the Hub session and a doorbell rings only its bound endpoint',
     })
     assert.deepEqual(requests, [
         ['/api/auth', undefined, { accessToken: 'owner-token' }],
-        ['/api/hamlet/main', 'Bearer owner-jwt', {}],
+        ['/api/hamlet/main', 'Bearer owner-jwt', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }],
         ['/hamlet/ring', 'Bearer bell-token', { prompt: 'job finished', dedup_key: 'job-1' }]
     ])
+})
+
+test('owner skill runs after being installed outside the checkout', async (t) => {
+    const { cp, mkdtemp, rm } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = await mkdtemp(join(tmpdir(), 'hamlet-owner-skill-'))
+    t.after(() => rm(dir, { recursive: true, force: true }))
+    await cp(new URL('../skills/hamlet/', import.meta.url), dir, { recursive: true })
+    const { stdout } = await promisify(execFile)(join(dir, 'scripts', 'hamlet'), ['help'], { cwd: tmpdir() })
+    assert.match(stdout, /hamlet start/)
 })
