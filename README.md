@@ -14,4 +14,4 @@ CLI 默认连接本机 3006 端口，支持 HAMLET_API_URL 和 CLI_API_TOKEN。�
 
 运行 `npm run check` 可验证本仓库的主助理入口和 doorbell 命令。Hub、Runner、Web 和协作协议的构建及测试位于配套的 Hub 仓库。
 
-Runner 随托管会话提供 hamlet-agent skill 和 doorbell Python SDK。监听脚本用 Python 的 `from doorbell import ring` 上报。此仓库的 `doorbell ring` 命令供有 DOORBELL_URL 和 DOORBELL_TOKEN 的环境手动调试。
+Runner 在托管会话的开发者指令中给出协作指南 `hamlet-agent` 的本机路径，供 Agent 按需读取。Runner 还为监听脚本提供 doorbell Python SDK，脚本可通过 `from doorbell import ring` 导入上报函数。此仓库的 `doorbell ring` 命令供有 DOORBELL_URL 和 DOORBELL_TOKEN 的环境手动调试。
