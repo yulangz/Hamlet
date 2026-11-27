@@ -14,4 +14,16 @@ CLI 默认连接本机 3006 端口，支持 HAMLET_API_URL 和 CLI_API_TOKEN。�
 
 运行 `npm run check` 可验证本仓库的主助理入口和 doorbell 命令。Hub、Runner、Web 和协作协议的构建及测试位于配套的 Hub 仓库。
 
+## home-server 部署
+
+在 Hub 主机的 Hamlet 仓库目录运行以下命令，将主 Agent 初始化加入已有的 systemd 用户服务：
+
+```sh
+install -Dm644 deploy/home-server/hamlet-main-agent.service ~/.config/systemd/user/hamlet-main-agent.service
+systemctl --user daemon-reload
+systemctl --user enable --now hamlet-main-agent.service
+```
+
+后续部署启动 Hub 和本机 Runner 时会自动执行初始化。服务每次从 Hub 的 `settings.json` 读取当前凭据，本机 Runner 尚未上线时会重试。空库会创建主 Agent 并投递首条角色提示，已有主 Agent 时会打开原会话。可用 `systemctl --user status hamlet-main-agent` 查看结果。
+
 托管会话沿用 Codex 默认指令。Hamlet 的协作约定写在 MCP 工具描述里，whoami、agent_create 和 doorbell_create 的描述还给出 Runner 内置协作指南 `hamlet-agent` 的本机路径，供 Agent 按需读取。Runner 还为监听脚本提供 doorbell Python SDK，脚本可通过 `from doorbell import ring` 导入上报函数。此仓库的 `doorbell ring` 命令供有 DOORBELL_URL 和 DOORBELL_TOKEN 的环境手动调试。
