@@ -1,0 +1,17 @@
+[Unit]
+Description=Open the Hamlet main agent
+After=hamlet-hub.service hamlet-runner.service
+PartOf=hamlet-hub.service hamlet-runner.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/桌面/always_on_agent/Hamlet
+Environment=HAMLET_HOME=%h/.local/share/hamlet-hub
+Environment=HAMLET_API_URL=http://127.0.0.1:13007
+ExecStart=/usr/bin/node bin/hamlet.js start
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=hamlet-hub.service hamlet-runner.service
